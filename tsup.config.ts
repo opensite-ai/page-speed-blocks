@@ -16,7 +16,14 @@ export default defineConfig({
   splitting: false,
   treeshake: true,
   minify: false,
-  external: ["react", "react-dom", "@opensite/ui", "@page-speed/img", "@opensite/video", "@page-speed/pressable"],
+  external: [
+    "react",
+    "react-dom",
+    "@opensite/ui",
+    "@page-speed/img",
+    "@page-speed/video",
+    "@page-speed/pressable",
+  ],
   esbuildOptions(options) {
     options.banner = {
       js: '"use client";',
