@@ -1,6 +1,6 @@
 # @page-speed/blocks
 
-High-performance rendering runtime for `@opensite/ui` components with pre-compiled Tailwind CSS and tree-shakable architecture.
+High-performance rendering runtime for `@opensite/ui` components with pre-compiled Tailwind CSS, RouterProvider integration for Pressable components, and tree-shakable architecture.
 
 ## Features
 
@@ -8,6 +8,8 @@ High-performance rendering runtime for `@opensite/ui` components with pre-compil
 - **Tree-Shakable**: Granular exports allow importing only what you need
 - **Flexible Styling**: Works with both pre-compiled CSS and runtime Tailwind
 - **Registry-Based**: Extensible component registry for custom renderers
+- **RouterProvider Integration**: Automatic RouterProvider wrapping for Pressable components
+- **Direct Pressable Usage**: Uses `@page-speed/pressable` directly for proper Tailwind styling
 - **TypeScript**: Full type safety with comprehensive type definitions
 - **React 18+**: Built for modern React with hooks and concurrent features
 
@@ -24,10 +26,12 @@ yarn add @page-speed/blocks
 ### Peer Dependencies
 
 ```bash
-pnpm add react react-dom @opensite/ui @page-speed/img @opensite/video @page-speed/pressable
+pnpm add react react-dom @opensite/ui @page-speed/img @page-speed/video @page-speed/pressable @page-speed/router
 ```
 
 ## Quick Start
+
+### Basic Usage
 
 ```tsx
 import { BlocksRenderer } from "@page-speed/blocks";
@@ -47,6 +51,49 @@ function App() {
 }
 ```
 
+### Enhanced Usage (Recommended)
+
+The `EnhancedBlocksRenderer` automatically wraps your blocks with `RouterProvider` from `@page-speed/router`, ensuring Pressable components work correctly:
+
+```tsx
+import { EnhancedBlocksRenderer } from "@page-speed/blocks";
+import type { Block } from "@page-speed/blocks/types";
+
+const blocks: Block[] = [
+  {
+    _id: "1",
+    _type: "Button",
+    props: {
+      variant: "default",
+      size: "lg",
+      onClick: () => console.log("Clicked!"),
+    },
+    content: "Click Me",
+  },
+];
+
+function App() {
+  return <EnhancedBlocksRenderer blocks={blocks} />;
+}
+```
+
+### Manual Provider Control
+
+If your app already has a RouterProvider, you can disable the automatic wrapping:
+
+```tsx
+import { EnhancedBlocksRenderer } from "@page-speed/blocks";
+
+function App() {
+  return (
+    <EnhancedBlocksRenderer
+      blocks={blocks}
+      disableRouter={true}  // App already has RouterProvider
+    />
+  );
+}
+```
+
 ## Core Concepts
 
 ### Block Structure
@@ -60,19 +107,38 @@ interface Block {
   _parent?: string | null;  // Parent block ID (null for root)
   styles?: string;          // Tailwind CSS classes
   content?: string;         // Text content
+  props?: Record<string, any>; // Component-specific props
   // ... additional properties
 }
 ```
 
+### Built-in Renderers
+
+The library includes optimized renderers for common component types that use `@page-speed/pressable` directly:
+
+```typescript
+// Automatically registered block types:
+- Pressable, PressableButton, PressableLink, CTAButton, ActionButton
+- Button, SubmitButton, FormButton
+- Link, NavLink, CTALink, ExternalLink
+```
+
+These renderers ensure proper Tailwind styling by using the Pressable component from `@page-speed/pressable` directly instead of pass-through components.
+
 ### Component Registry
 
-The library uses a registry system to map block types to renderer functions:
+Extend the library with custom renderers:
 
 ```tsx
 import { registerBlockRenderer } from "@page-speed/blocks/registry";
 
 registerBlockRenderer("MyComponent", ({ block, context }) => {
-  return <div className={block.styles}>{block.content}</div>;
+  return (
+    <div className={block.styles}>
+      {block.content}
+      {context.renderChildren(block._id)}
+    </div>
+  );
 });
 ```
 
@@ -82,25 +148,47 @@ Import only what you need for optimal bundle size:
 
 ```typescript
 // Specific imports (recommended)
-import { BlocksRenderer } from "@page-speed/blocks/core/renderer";
+import { EnhancedBlocksRenderer } from "@page-speed/blocks/core/enhanced";
+import { BlocksProvider } from "@page-speed/blocks/core/provider";
 import { registerBlockRenderer } from "@page-speed/blocks/registry";
 import type { Block } from "@page-speed/blocks/types";
 
-// Namespaced imports
-import { BlocksRenderer } from "@page-speed/blocks/core";
-import { registerBlockRenderer } from "@page-speed/blocks/registry";
+// Custom renderers
+import {
+  pressableRenderer,
+  buttonRenderer,
+  linkRenderer
+} from "@page-speed/blocks/renderers";
 
 // Main export (includes all core functionality)
-import { BlocksRenderer, registerBlockRenderer } from "@page-speed/blocks";
+import {
+  EnhancedBlocksRenderer,
+  BlocksRenderer,
+  registerBlockRenderer,
+  initializeDefaultRenderers
+} from "@page-speed/blocks";
 ```
 
 ## API Reference
 
 ### Components
 
-#### `BlocksRenderer`
+#### `<EnhancedBlocksRenderer />`
 
-Main rendering component that processes block trees.
+The main component for rendering blocks with automatic RouterProvider wrapping:
+
+```tsx
+interface EnhancedBlocksRendererProps {
+  blocks: Block[];           // Array of blocks to render
+  className?: string;        // Optional CSS class for wrapper
+  wrapper?: React.ComponentType<{ children: React.ReactNode }>;
+  disableRouter?: boolean;   // Disable RouterProvider if app already has one
+}
+```
+
+#### `<BlocksRenderer />`
+
+Base renderer without RouterProvider (for advanced use cases):
 
 ```tsx
 interface BlocksRendererProps {
@@ -110,178 +198,196 @@ interface BlocksRendererProps {
 }
 ```
 
-**Example:**
+#### `<BlocksProvider />`
+
+Provider component for wrapping blocks with necessary context:
 
 ```tsx
-<BlocksRenderer
-  blocks={blocks}
-  className="custom-wrapper"
-  wrapper={CustomWrapperComponent}
-/>
+interface BlocksProviderProps {
+  children: React.ReactNode;
+  disableRouter?: boolean;  // Optional: disable router provider
+}
 ```
 
 ### Registry Functions
 
-#### `registerBlockRenderer(type, renderer)`
+```typescript
+// Register a custom renderer for a block type
+registerBlockRenderer(type: string, renderer: BlockRenderer): void
 
-Register a custom renderer for a block type.
+// Get renderer for a specific type
+getBlockRenderer(type: string): BlockRenderer | undefined
 
-```tsx
-registerBlockRenderer("CustomBlock", ({ block, context }) => {
-  return <div>{block.content}</div>;
-});
-```
+// Check if a renderer exists
+hasBlockRenderer(type: string): boolean
 
-#### `getBlockRenderer(type)`
+// Remove a renderer
+unregisterBlockRenderer(type: string): void
 
-Get a registered renderer by type.
+// Clear all custom renderers
+clearRegistry(): void
 
-```tsx
-const renderer = getBlockRenderer("CustomBlock");
-```
+// Get all registered types
+getRegisteredTypes(): string[]
 
-#### `hasBlockRenderer(type)`
+// Register multiple renderers at once
+registerRenderers(renderers: Record<string, BlockRenderer>): void
 
-Check if a renderer is registered.
-
-```tsx
-if (hasBlockRenderer("CustomBlock")) {
-  // Renderer exists
-}
-```
-
-#### `registerRenderers(renderers)`
-
-Batch register multiple renderers.
-
-```tsx
-registerRenderers({
-  Header: ({ block }) => <header>{block.content}</header>,
-  Footer: ({ block }) => <footer>{block.content}</footer>,
-});
+// Initialize default renderers (auto-called in browser)
+initializeDefaultRenderers(): void
 ```
 
 ### Utility Functions
 
-#### `getRootBlocks(blocks)`
+```typescript
+// Parse design payload string to blocks
+parseDesignPayload(payload: string | DesignPayload): Block[]
 
-Get all root-level blocks (blocks with no parent).
+// Get root blocks (no parent)
+getRootBlocks(blocks: Block[]): Block[]
 
-#### `getChildBlocks(blocks, parentId)`
+// Get child blocks of a parent
+getChildBlocks(blocks: Block[], parentId: string): Block[]
 
-Get all child blocks of a specific parent.
+// Build element props from block
+buildElementProps(block: Block): Record<string, any>
 
-#### `buildElementProps(block)`
+// Extract className from styles string
+extractClassName(styles?: string): string
 
-Build React props from block configuration (handles styles, attrs, etc.).
+// Extract background styles
+extractBackgroundStyle(styles?: string): React.CSSProperties | undefined
+```
 
-#### `parseDesignPayload(payload)`
+## Pre-compiled CSS Support
 
-Parse a design payload from string or object format.
-
-## Integration with @opensite/ui
-
-This library is designed to work seamlessly with `@opensite/ui` components:
+For production environments, use pre-compiled Tailwind CSS:
 
 ```tsx
-import { registerBlockRenderer } from "@page-speed/blocks";
-import { Button } from "@opensite/ui/blocks/button/button-primary";
+// In your HTML/layout
+<link rel="stylesheet" href="https://cdn.example.com/tailwind.css" />
 
-registerBlockRenderer("ButtonPrimary", ({ block, context }) => {
-  return (
-    <Button
-      href={block.link?.href}
-      className={block.styles}
-    >
-      {block.content}
-      {context.renderChildren(block._id)}
-    </Button>
-  );
-});
+// Then use BlocksRenderer normally
+<EnhancedBlocksRenderer blocks={blocks} />
+```
+
+The library automatically works with pre-compiled styles, ensuring all button variants and component styles are properly applied.
+
+## Pressable Component Integration
+
+The library includes direct integration with `@page-speed/pressable` for proper button and link styling:
+
+```tsx
+// This will use the optimized Pressable renderer
+const buttonBlock: Block = {
+  _id: "btn-1",
+  _type: "Button",
+  props: {
+    variant: "default",
+    size: "lg",
+    onClick: () => console.log("Clicked!"),
+  },
+  content: "Click Me",
+};
+
+// Links also use Pressable
+const linkBlock: Block = {
+  _id: "link-1",
+  _type: "Link",
+  props: {
+    href: "/about",
+    variant: "link",
+  },
+  content: "Learn More",
+};
 ```
 
 ## Advanced Usage
 
-### Custom Wrapper Component
+### Custom Block Renderer
 
 ```tsx
-function CustomWrapper({ children }: { children: React.ReactNode }) {
-  return <div className="page-container">{children}</div>;
+import { registerBlockRenderer } from "@page-speed/blocks";
+import { Pressable } from "@page-speed/pressable";
+
+registerBlockRenderer("CustomCTA", ({ block, context }) => {
+  const { href, label, icon } = block.props || {};
+
+  return (
+    <Pressable
+      href={href}
+      variant="default"
+      size="lg"
+      className="my-custom-class"
+    >
+      {icon && <Icon name={icon} />}
+      {label || block.content}
+      {context.renderChildren(block._id)}
+    </Pressable>
+  );
+});
+```
+
+### Server-Side Rendering
+
+```tsx
+import { renderToString } from "react-dom/server";
+import { EnhancedBlocksRenderer } from "@page-speed/blocks";
+
+const html = renderToString(
+  <EnhancedBlocksRenderer blocks={blocks} />
+);
+```
+
+### Dynamic Block Loading
+
+```tsx
+import { BlocksRenderer, parseDesignPayload } from "@page-speed/blocks";
+
+async function loadAndRenderBlocks() {
+  const response = await fetch("/api/blocks");
+  const payload = await response.json();
+  const blocks = parseDesignPayload(payload);
+
+  return <BlocksRenderer blocks={blocks} />;
 }
-
-<BlocksRenderer blocks={blocks} wrapper={CustomWrapper} />
 ```
 
-### Error Handling
+## Migration from @opensite/blocks
 
-The renderer includes built-in error boundaries that catch rendering errors and display fallback UI:
+If migrating from `@opensite/blocks`:
 
-```tsx
-// Errors are logged to console and display a red error box
-// Children are still rendered when possible
-```
-
-### Generic Renderer
-
-For blocks without custom renderers, the library uses a generic renderer that maps block types to HTML elements:
-
-```tsx
-import { genericBlockRenderer } from "@page-speed/blocks/core/renderer";
-
-// Automatically handles: Box -> div, Heading -> h2, Paragraph -> p, etc.
-```
-
-## Performance Optimization
-
-### Pre-compiled CSS
-
-For maximum performance, pre-compile your Tailwind CSS:
-
-1. Extract all `styles` from your blocks
-2. Run Tailwind CLI to generate minimal CSS
-3. Serve the compiled CSS file
-4. Blocks will use the pre-compiled classes
-
-### Tree Shaking
-
-Import from specific paths to enable tree shaking:
-
+1. Replace imports:
 ```typescript
-// Good - only imports what you need
-import { BlocksRenderer } from "@page-speed/blocks/core/renderer";
+// Before
+import { BlocksRenderer } from "@opensite/blocks";
 
-// Less optimal - imports entire package
-import { BlocksRenderer } from "@page-speed/blocks";
+// After
+import { EnhancedBlocksRenderer } from "@page-speed/blocks";
 ```
 
-## TypeScript Support
+2. Use EnhancedBlocksRenderer for automatic RouterProvider:
+```tsx
+// Before
+<BlocksRenderer blocks={blocks} />
 
-Full TypeScript support with comprehensive type definitions:
-
-```typescript
-import type {
-  Block,
-  BlockRenderer,
-  BlockRenderContext,
-  DesignPayload
-} from "@page-speed/blocks/types";
+// After
+<EnhancedBlocksRenderer blocks={blocks} />
 ```
+
+3. The library automatically uses `@page-speed/pressable` for button/link components, ensuring proper Tailwind styling.
 
 ## Browser Support
 
-- Modern browsers (Chrome, Firefox, Safari, Edge)
-- React 17+ (React 18+ recommended)
-- ES2022+ features
-
-## License
-
-BSD-3-Clause
+- Chrome/Edge 90+
+- Firefox 88+
+- Safari 14+
+- React 17+ required
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/opensite-ai/page-speed-blocks/blob/main/CONTRIBUTING.md)
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
 
-## Support
+## License
 
-- GitHub Issues: [github.com/opensite-ai/page-speed-blocks/issues](https://github.com/opensite-ai/page-speed-blocks/issues)
-- Documentation: [opensite.ai/docs/page-speed-blocks](https://opensite.ai/docs/page-speed-blocks)
+BSD-3-Clause - see [LICENSE](./LICENSE) for details.

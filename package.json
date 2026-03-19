@@ -1,6 +1,6 @@
 {
   "name": "@page-speed/blocks",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "High-performance rendering runtime for @opensite/ui components with pre-compiled Tailwind CSS and tree-shakable architecture",
   "keywords": [
     "react",
@@ -51,6 +51,16 @@
       "import": "./dist/core/renderer.js",
       "require": "./dist/core/renderer.cjs"
     },
+    "./core/provider": {
+      "types": "./dist/core/BlocksProvider.d.ts",
+      "import": "./dist/core/BlocksProvider.js",
+      "require": "./dist/core/BlocksProvider.cjs"
+    },
+    "./core/enhanced": {
+      "types": "./dist/core/EnhancedBlocksRenderer.d.ts",
+      "import": "./dist/core/EnhancedBlocksRenderer.js",
+      "require": "./dist/core/EnhancedBlocksRenderer.cjs"
+    },
     "./registry": {
       "types": "./dist/registry/index.d.ts",
       "import": "./dist/registry/index.js",
@@ -65,6 +75,11 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.cjs"
+    },
+    "./renderers": {
+      "types": "./dist/renderers/index.d.ts",
+      "import": "./dist/renderers/index.js",
+      "require": "./dist/renderers/index.cjs"
     }
   },
   "scripts": {
