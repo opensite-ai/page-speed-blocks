@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.1.7
+        specifier: ^3.1.7
         version: 3.1.7(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.9
