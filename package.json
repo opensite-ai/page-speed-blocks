@@ -97,7 +97,7 @@
   "dependencies": {
     "@opensite/ui": "3.3.5",
     "@page-speed/img": "0.4.9",
-    "@page-speed/pressable": "0.0.7",
+    "@page-speed/pressable": "0.0.8",
     "@page-speed/router": "1.0.2",
     "@page-speed/video": "0.0.7"
   },
