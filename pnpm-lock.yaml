@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: ^3.1.7
-        version: 3.1.7(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.3.5
+        version: 3.3.5(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.0.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.9
         version: 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -491,10 +491,12 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.1.7':
-    resolution: {integrity: sha512-hd3VRf3VarXGuEIDhEcaP3BQwHpjEDW0lMOPdctj3efNb6GIU8o1OTN358cNb/Oh/Kvz46DBMWuEkekooivKDA==}
+  '@opensite/ui@3.3.5':
+    resolution: {integrity: sha512-e1g7UebgKgfF4HNifixQ/jO8q5b4kzmYaI8ol6XNV4r8Wcm5R27qXjZcob6onGyVp0E/83TYgOTyCkEvZ1x30g==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
+      '@page-speed/pressable': '>=0.0.7'
+      '@page-speed/router': '>=1.0.0'
       '@tailwindcss/typography': '>=0.5.0'
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -550,10 +552,10 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@page-speed/markdown-to-jsx@0.0.6':
-    resolution: {integrity: sha512-x7kfRaDWIDCSWsfyBd8hsJHgEX8JYL9Rx9W3vlcgetdDHks5xyvcG3GMC7vhI8vAryyvrWM49fNjpG7omkNy7Q==}
+  '@page-speed/markdown-to-jsx@0.0.7':
+    resolution: {integrity: sha512-92B1aj+mxfNn61GKMDatdep9wjQK4FSkwbQ0so24vnvyc2dzcrfNhmzPDaOln0wg1rrlPZdloUof2nbn1OwRjw==}
     peerDependencies:
-      '@page-speed/img': 0.4.6
+      '@page-speed/img': '>=0.4.6'
       '@page-speed/pressable': '>=0.0.1'
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
@@ -3572,7 +3574,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.1.7(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.3.5(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.0.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/forms': 0.8.2(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
@@ -3580,7 +3582,7 @@ snapshots:
       '@page-speed/img': 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/lightbox': 0.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/maps': 0.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/markdown-to-jsx': 0.0.6(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/markdown-to-jsx': 0.0.7(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pdf-viewer': 0.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pressable': 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router': 1.0.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3696,7 +3698,7 @@ snapshots:
     transitivePeerDependencies:
       - mapbox-gl
 
-  '@page-speed/markdown-to-jsx@0.0.6(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/markdown-to-jsx@0.0.7(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       markdown-to-jsx: 7.7.17(react@18.3.1)
       react: 18.3.1
