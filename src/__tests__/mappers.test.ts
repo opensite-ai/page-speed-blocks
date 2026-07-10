@@ -166,6 +166,43 @@ describe("mapInstagramFeedItem (§4.1b)", () => {
     expect(out?.imageAlt?.endsWith("…")).toBe(true);
     expect(out?.imageAlt).not.toContain("\n");
   });
+
+  // Shared lockstep test vectors — the identical cases exist in dashtrack-ai
+  // spec/services/feeds/instagram_feed_resolver_spec.rb. The alt rule counts
+  // CODEPOINTS, not UTF-16 code units, so emoji are never split.
+  const altFor = (caption: string): string | undefined =>
+    mapInstagramFeedItem({ ...imagePost, caption })?.imageAlt;
+
+  // (a) 150 ascii chars -> first 100 + ellipsis.
+  it("hard-cuts a long ascii caption at 100 codepoints with an ellipsis", () => {
+    const alt = altFor("a".repeat(150));
+    expect(alt).toBe(`${"a".repeat(100)}…`);
+    expect(alt?.length).toBe(101);
+  });
+
+  // (b) NBSP (U+00A0) + ideographic space (U+3000) runs collapse and trim.
+  it("collapses and trims Unicode whitespace (NBSP U+00A0) runs", () => {
+    expect(altFor("\u00A0\u00A0hello\u00A0\u3000\u00A0world\u3000")).toBe(
+      "hello world"
+    );
+  });
+
+  // (c) 120 emoji (each a surrogate pair) -> first 100 codepoints, never split.
+  it("cuts at 100 codepoints without splitting surrogate-pair emoji", () => {
+    const alt = altFor("\u{1F600}".repeat(120));
+    expect(alt).toBe(`${"\u{1F600}".repeat(100)}…`);
+    // Codepoint count is 101 (100 emoji + ellipsis); UTF-16 .length is larger.
+    expect(alt ? Array.from(alt).length : 0).toBe(101);
+    // No lone surrogate was produced by the cut.
+    expect(alt).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  // (d) a cut that lands on whitespace has that trailing whitespace stripped.
+  it("strips trailing whitespace exposed by the 100-codepoint cut", () => {
+    const alt = altFor(`${"a".repeat(99)} ${"b".repeat(50)}`);
+    expect(alt).toBe(`${"a".repeat(99)}…`);
+    expect(alt?.length).toBe(100);
+  });
 });
 
 describe("formatFeedDate (§4.1)", () => {

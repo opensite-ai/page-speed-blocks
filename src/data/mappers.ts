@@ -67,18 +67,29 @@ const INSTAGRAM_ALT_FALLBACK = "Instagram post";
 const INSTAGRAM_ALT_MAX_LENGTH = 100;
 
 /**
- * Derive `imageAlt` from a caption (§4.1b): whitespace-collapsed, truncated to
- * {@link INSTAGRAM_ALT_MAX_LENGTH} chars (with an ellipsis), falling back to
- * `"Instagram post"` when the caption is empty/absent. Kept deterministic so the
- * dashtrack-ai hydrator can mirror it exactly (lockstep).
+ * Derive `imageAlt` from a caption (§4.1b). Byte-exact lockstep with the
+ * dashtrack-ai `InstagramFeedResolver#image_alt` hydrator — do NOT change one
+ * side without the other. The rule (identical words in both codebases):
+ *   1. collapse runs of Unicode whitespace to a single space
+ *   2. trim Unicode whitespace from both ends
+ *   3. if empty -> "Instagram post"
+ *   4. length is measured in CODEPOINTS (not bytes / UTF-16 code units), so
+ *      surrogate-pair emoji are never split
+ *   5. if <= 100 codepoints return as-is, else take the first 100 codepoints,
+ *      strip trailing Unicode whitespace from the cut, and append "…"
+ * JS /\s/u and Ruby [[:space:]] agree on the practical whitespace set
+ * (space, NBSP U+00A0, newline, tab, ideographic space U+3000).
  */
 function instagramImageAlt(caption?: string | null): string {
   if (!caption) return INSTAGRAM_ALT_FALLBACK;
-  const normalized = caption.replace(/\s+/g, " ").trim();
+  const normalized = caption.replace(/\s+/gu, " ").trim();
   if (!normalized) return INSTAGRAM_ALT_FALLBACK;
-  return normalized.length > INSTAGRAM_ALT_MAX_LENGTH
-    ? `${normalized.slice(0, INSTAGRAM_ALT_MAX_LENGTH).trimEnd()}…`
-    : normalized;
+  const codepoints = Array.from(normalized);
+  if (codepoints.length <= INSTAGRAM_ALT_MAX_LENGTH) return normalized;
+  return `${codepoints
+    .slice(0, INSTAGRAM_ALT_MAX_LENGTH)
+    .join("")
+    .replace(/\s+$/u, "")}…`;
 }
 
 /**
