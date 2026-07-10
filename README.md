@@ -160,6 +160,9 @@ import {
   linkRenderer
 } from "@page-speed/blocks/renderers";
 
+// Dynamic data feed layer
+import { resolveBlocks, createFeedClient } from "@page-speed/blocks/data";
+
 // Main export (includes all core functionality)
 import {
   EnhancedBlocksRenderer,
@@ -352,6 +355,82 @@ async function loadAndRenderBlocks() {
   return <BlocksRenderer blocks={blocks} />;
 }
 ```
+
+## Dynamic Data Feeds (`@page-speed/blocks/data`)
+
+The `./data` subpath is the client-side rendering data layer for Dynamic Data Feeds
+(see `FEED_CONTRACT.md`). It resolves *symbolic* `dataSource` descriptors carried on blocks
+into real props, then hands the resolved block tree to the synchronous renderer. The render
+engine itself is untouched — resolution is a **pre-render async pass**.
+
+### Symbolic sources
+
+A block declares *what data it wants* via a block-level `dataSource` (a sibling of `blockProps`),
+never the data itself:
+
+```jsonc
+{
+  "_type": "blog-grid-author-cards",
+  "_id": "blk_a1",
+  "blockProps": { "heading": "Latest news" },   // authored props — never overwritten
+  "dataSource": { "type": "blog_feed", "limit": 9, "category": "news", "bindTo": "posts" }
+}
+```
+
+### `resolveBlocks`
+
+```tsx
+import { resolveBlocks } from "@page-speed/blocks/data";
+import { BlocksRenderer } from "@page-speed/blocks/core/renderer";
+
+const resolved = await resolveBlocks(blocks, {
+  baseUrl: process.env.FEEDS_API_ORIGIN!, // never hardcode the origin
+  websiteToken,                           // websites.token — the single scoping identifier
+  path: currentPath,                      // resolves blog_post { current: true } slugs
+});
+
+<BlocksRenderer blocks={resolved} />;
+```
+
+`resolveBlocks` finds blocks with a `dataSource`, fetches via `FeedClient`, maps the wire shape
+to props (`BlogPostItem[]` for `blog_feed`, detail props for `blog_post`), inlines them into the
+**bind target** (`dataSource.bindTo` → per-block default in `DEFAULT_BIND_TARGETS` → `"posts"`),
+and attaches a machine-readable `_feedMeta`. The `dataSource` is retained on the output block so
+the client can re-query (pagination/filtering). Empty and error states are **distinct**:
+
+- `_feedMeta.status === "empty"` → the block renders its natural empty state (no fabricated items).
+- `_feedMeta.status === "error"` → routed to the `__feed_error__` renderer when one is registered
+  (otherwise renders the empty state).
+
+Sources may expand one input block into many (`expands: true`, contract D6); pass custom
+resolvers via the `sources` option.
+
+### `FeedClient`
+
+```tsx
+import { createFeedClient } from "@page-speed/blocks/data";
+
+const client = createFeedClient({ baseUrl, websiteToken, fetcher });
+const { data, meta, error } = await client.listBlogs({ page: 2, categorySlug: "news" });
+```
+
+`FeedClient` is the single place that builds feed URLs
+(`/public_services/websites/{token}/feeds/...`). It **resends every provided filter on every
+page request** (filters never drop across pages), clamps `per_page` to ≤ 50, URL-encodes values,
+and **returns** `{ data, meta, error }` — it never throws for expected failures and never logs.
+
+### Error / fallback renderer keys
+
+Exported constants: `FALLBACK_RENDERER_KEY` (`"__fallback__"`) and `FEED_ERROR_RENDERER_KEY`
+(`"__feed_error__"`). Register a renderer under `FEED_ERROR_RENDERER_KEY` to surface feed errors
+distinctly from empty states.
+
+### SSR note
+
+`resolveBlocks` is environment-agnostic (it uses plain `fetch` — inject one via the `fetcher`
+option in Node < 18 or tests). As with the rest of the package, **auto-init is browser-only**:
+on the server you must call `initializeDefaultRenderers()` manually before rendering the resolved
+blocks (and register any custom / `__feed_error__` renderers).
 
 ## Migration from @opensite/blocks
 

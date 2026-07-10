@@ -1,6 +1,6 @@
 {
   "name": "@page-speed/blocks",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "High-performance rendering runtime for @opensite/ui components with pre-compiled Tailwind CSS and tree-shakable architecture",
   "keywords": [
     "react",
@@ -75,6 +75,11 @@
       "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.cjs"
+    },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "import": "./dist/data/index.js",
+      "require": "./dist/data/index.cjs"
     },
     "./renderers": {
       "types": "./dist/renderers/index.d.ts",

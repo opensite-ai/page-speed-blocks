@@ -17,7 +17,8 @@ interface ButtonBlockProps {
  * Renders as Pressable with asButton=true
  */
 export const buttonRenderer: BlockRenderer = ({ block, context }) => {
-  const props = (block.props || {}) as ButtonBlockProps;
+  // `blockProps` is canonical (the declared field); `props` is a legacy fallback for older payloads.
+  const props = ((block.blockProps ?? block.props) || {}) as ButtonBlockProps;
   const {
     variant = "default",
     size = "default",

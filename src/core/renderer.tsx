@@ -1,6 +1,10 @@
 import React, { Fragment, createElement, useMemo } from "react";
 import type { Block, BlockRenderer, BlockRendererProps } from "../types/index.js";
-import { getBlockRenderer } from "../registry/index.js";
+import {
+  getBlockRenderer,
+  FALLBACK_RENDERER_KEY,
+  FEED_ERROR_RENDERER_KEY,
+} from "../registry/index.js";
 import { buildElementProps, getChildBlocks, getRootBlocks } from "../utils/index.js";
 
 /**
@@ -57,7 +61,17 @@ export const genericBlockRenderer: BlockRenderer = ({ block, context }) => {
  */
 export function renderBlock({ block, context }: BlockRendererProps): React.ReactNode {
   try {
-    const customRenderer = getBlockRenderer(block._type) ?? getBlockRenderer("__fallback__");
+    // A block that failed feed resolution routes to the error renderer when one is registered,
+    // so error states stay distinct from empty states (FEED_CONTRACT §2.3 rule 5 / §7.3).
+    // Otherwise it renders normally (its natural empty state).
+    const feedErrorRenderer =
+      block._feedMeta?.status === "error"
+        ? getBlockRenderer(FEED_ERROR_RENDERER_KEY)
+        : undefined;
+    const customRenderer =
+      feedErrorRenderer ??
+      getBlockRenderer(block._type) ??
+      getBlockRenderer(FALLBACK_RENDERER_KEY);
     const renderer = customRenderer ?? genericBlockRenderer;
     return renderer({ block, context });
   } catch (error) {
@@ -85,6 +99,11 @@ export interface BlocksRendererProps {
   className?: string;
   /** Optional wrapper component (defaults to div with display: contents) */
   wrapper?: React.ComponentType<{ children: React.ReactNode }>;
+  /**
+   * Optional data bag threaded into every renderer's `context.data`
+   * (FEED_CONTRACT §7.3) — e.g. route-injected / hydrated feed data.
+   */
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -94,7 +113,8 @@ export interface BlocksRendererProps {
 export const BlocksRenderer: React.FC<BlocksRendererProps> = ({
   blocks,
   className,
-  wrapper: Wrapper
+  wrapper: Wrapper,
+  data
 }) => {
   const rootBlocks = useMemo(() => getRootBlocks(blocks), [blocks]);
 
@@ -113,6 +133,7 @@ export const BlocksRenderer: React.FC<BlocksRendererProps> = ({
         context: {
           blocks,
           renderChildren: renderChildBlocks,
+          data,
         },
       });
     } catch (error) {

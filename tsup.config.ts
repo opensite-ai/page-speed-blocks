@@ -10,6 +10,7 @@ export default defineConfig({
     "registry/index": "src/registry/index.ts",
     "types/index": "src/types/index.ts",
     "utils/index": "src/utils/index.ts",
+    "data/index": "src/data/index.ts",
     "renderers/index": "src/renderers/index.ts",
     "renderers/pressable-renderer": "src/renderers/pressable-renderer.tsx",
     "renderers/button-renderer": "src/renderers/button-renderer.tsx",

@@ -26,6 +26,7 @@
 16. [Dependency Graph](#16-dependency-graph)
 17. [TypeScript Rules](#17-typescript-rules)
 18. [Checklist Before Every Commit](#18-checklist-before-every-commit)
+19. [Dynamic Data Feed Layer](#19-dynamic-data-feed-layer-srcdata)
 
 ---
 
@@ -34,7 +35,7 @@
 | Field | Value |
 |---|---|
 | NPM name | `@page-speed/blocks` |
-| Version | `0.1.2` |
+| Version | `0.2.0` |
 | License | BSD-3-Clause |
 | Package manager | **pnpm** (v10.24.0 required) |
 | Node requirement | `>=18.0.0` |
@@ -197,6 +198,7 @@ tree-shaking.
 | `@page-speed/blocks/core/enhanced` | Only `EnhancedBlocksRenderer` |
 | `@page-speed/blocks/registry` | Registry CRUD functions only |
 | `@page-speed/blocks/types` | TypeScript types only (no runtime code) |
+| `@page-speed/blocks/data` | Dynamic data feed layer — `resolveBlocks`, `createFeedClient`, mappers, bind-target maps, renderer-key constants (see §19) |
 | `@page-speed/blocks/renderers` | Built-in renderer functions + type arrays |
 
 **Prefer granular imports.** The barrel (`@page-speed/blocks`) still tree-shakes, but granular
@@ -712,3 +714,51 @@ Additional checks:
 - [ ] `clearRegistry()` is called in `beforeEach` for any test touching the registry
 - [ ] `CHANGELOG.md` updated if behavior changes
 - [ ] `package.json` version bumped if publishing
+
+---
+
+## 19. Dynamic Data Feed Layer (`src/data/`)
+
+Added in `0.2.0` (Dynamic Data Feeds, Phase 1). Implements the client-side rendering data layer
+of `FEED_CONTRACT.md` §7. **The synchronous render engine is untouched** — resolution is a
+separate pre-render async pass. Files:
+
+```
+src/data/
+├── index.ts          ← Barrel: re-exports the public API + data types from src/types
+├── feed-client.ts    ← createFeedClient — the SINGLE place that builds feed URLs
+├── resolve-blocks.ts ← resolveBlocks + DEFAULT_BIND_TARGETS + resolveBindTarget
+└── mappers.ts        ← wire → prop mappers (mapBlogFeedItem, mapBlogFeedDetail, formatFeedDate)
+```
+
+### Key rules (do not regress)
+
+- **Types stay in `src/types/index.ts`.** All feed interfaces (`DataSource`, `FeedMeta`,
+  `FeedError`, `FeedListResponse`, `BlogFeedItem`, `BlogPostItem`, `FeedClient`, …) live there and
+  are re-exported from `src/data`. `Block` gained `dataSource?` and `_feedMeta?`;
+  `BlockRenderContext` gained `data?`.
+- **`FeedClient` owns URL building.** Every provided filter is serialized on every call
+  (filters never drop across pages — legacy bug #1). `per_page` is clamped ≤ 50. Values are
+  URL-encoded. Errors are **returned** as `{ data, meta, error }`, never thrown, never logged
+  (legacy bugs #4/#5/#6). `baseUrl` and `per_page` are injected, never hardcoded.
+- **`resolveBlocks` is pure.** No registry access, no mutation of the input blocks. It maps each
+  block to zero-or-more output blocks (one-to-many expansion, contract D6) and `.flat()`s the
+  result. Bind target = `dataSource.bindTo` → `DEFAULT_BIND_TARGETS[block._type]` → `"posts"`.
+  Only the bind target (and, for `blog-tech-insights`, an unset `featuredPost`) is written —
+  every other authored prop is untouched (contract §2.3 rule 2). `dataSource` is retained on the
+  output block. Unknown `dataSource.type` → block untouched + `_feedMeta.reason` =
+  `unknown_source:<type>`.
+- **Empty ≠ error.** `_feedMeta.status` is `ok | empty | error`. The `renderBlock` pipeline
+  routes `error`-state blocks to the `__feed_error__` renderer **only when it is registered**;
+  otherwise the block renders normally (its empty state). Never fabricate items or placeholder
+  content.
+- **Renderer-key constants** live in `src/registry/index.ts`: `FALLBACK_RENDERER_KEY`
+  (`"__fallback__"`) and `FEED_ERROR_RENDERER_KEY` (`"__feed_error__"`). Re-exported from the
+  barrel and `./data`.
+- **`blockProps` is canonical.** The three built-in renderers now read `block.blockProps ??
+  block.props` (legacy `props` is a fallback shim only).
+- **SSR:** `resolveBlocks` uses plain `fetch`; inject a `fetcher` for Node < 18 / tests.
+  `initializeDefaultRenderers()` must still be called manually server-side (browser-only
+  auto-init — see §6), including any custom / `__feed_error__` renderers.
+- Adding the `./data` subpath required updating **both** `tsup.config.ts` (`"data/index"`) and
+  `package.json` `exports` (`./data`).
