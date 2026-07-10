@@ -35,7 +35,7 @@
 | Field | Value |
 |---|---|
 | NPM name | `@page-speed/blocks` |
-| Version | `0.2.0` |
+| Version | `0.3.0` |
 | License | BSD-3-Clause |
 | Package manager | **pnpm** (v10.24.0 required) |
 | Node requirement | `>=18.0.0` |
@@ -719,17 +719,34 @@ Additional checks:
 
 ## 19. Dynamic Data Feed Layer (`src/data/`)
 
-Added in `0.2.0` (Dynamic Data Feeds, Phase 1). Implements the client-side rendering data layer
-of `FEED_CONTRACT.md` §7. **The synchronous render engine is untouched** — resolution is a
-separate pre-render async pass. Files:
+Added in `0.2.0` (Dynamic Data Feeds, Phase 1); extended in `0.3.0` (Phase 3, Instagram).
+Implements the client-side rendering data layer of `FEED_CONTRACT.md` §7. **The synchronous
+render engine is untouched** — resolution is a separate pre-render async pass. Files:
 
 ```
 src/data/
 ├── index.ts          ← Barrel: re-exports the public API + data types from src/types
-├── feed-client.ts    ← createFeedClient — the SINGLE place that builds feed URLs
-├── resolve-blocks.ts ← resolveBlocks + DEFAULT_BIND_TARGETS + resolveBindTarget
-└── mappers.ts        ← wire → prop mappers (mapBlogFeedItem, mapBlogFeedDetail, formatFeedDate)
+├── feed-client.ts    ← createFeedClient — the SINGLE place that builds feed URLs (listBlogs, listInstagram, …)
+├── resolve-blocks.ts ← resolveBlocks + DEFAULT_BIND_TARGETS + resolveBindTarget (blog_feed / blog_post / instagram_feed)
+└── mappers.ts        ← wire → prop mappers (mapBlogFeedItem, mapBlogFeedDetail, mapInstagramFeedItem, formatFeedDate)
 ```
+
+### Instagram feed (Phase 3, `0.3.0`)
+
+- `FeedClient.listInstagram({ page?, perPage?, hashtag? })` hits `/feeds/instagram`; same
+  URL-building / `per_page` clamp / error-envelope conventions as `listBlogs`.
+- `mapInstagramFeedItem` (§4.1b) returns `InstagramPostItem | null` — it **returns `null` to skip
+  imageless posts** (`files[0].image_url` absent). The `instagram_feed` resolver filters those
+  nulls; all-imageless / empty feeds resolve to `_feedMeta.status = "empty"`, reason
+  `no_instagram_posts`. Engagement counts are omitted when the wire value is `null` (never
+  fabricated as `0`). `videoUrl` is set only when `post_type === "video"`.
+- **Media-URL rule (load-bearing, §3.7):** the data layer only ever consumes the re-hosted
+  MediaRecord CDN URLs the server ships in `files[]`. The expiring
+  `instagram_post_files.img_url`/`video_url` columns are never on the wire — do not add any code
+  path that would surface them.
+- `DEFAULT_BIND_TARGETS['instagram-post-grid'] = 'items'` — keep in lockstep with dashtrack-ai
+  and `@opensite/ui`. No `@opensite/ui` dep bump: `InstagramPostItem` is a local string-typed
+  wire/prop shape, assignable to the block's `React.ReactNode` props.
 
 ### Key rules (do not regress)
 

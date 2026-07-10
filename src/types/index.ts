@@ -63,8 +63,8 @@ export interface Block {
 
 /**
  * Symbolic dynamic data source (FEED_CONTRACT §2.1 / §2.2).
- * All five source types ship as contract types in Phase 1; `blog_feed` and `blog_post`
- * are implemented, the rest are types-only.
+ * All five source types ship as contract types; `blog_feed` / `blog_post` (Phase 1) and
+ * `instagram_feed` (Phase 3) are implemented, `testimonials_feed` / `events_feed` are types-only.
  */
 export interface DataSource {
   /** Source type — maps to a resolver in `resolveBlocks`. */
@@ -88,6 +88,10 @@ export interface DataSource {
   slug?: string;
   /** `blog_post` selector: resolve the post from the current route. */
   current?: boolean;
+  /** `instagram_feed` selector: profile hint (resolved server-side; §2.2 optionalFields). */
+  profile?: string;
+  /** `instagram_feed` caption filter — `ILIKE %#hashtag%` (§3.7); leading `#` optional. */
+  hashtag?: string;
   /** Override the bind target prop (else per-block default, else `"posts"`). */
   bindTo?: string;
   /** Sources are intentionally open (future filters). */
@@ -227,6 +231,89 @@ export interface BlogPostDetail extends BlogPostItem {
 }
 
 /**
+ * A single servable Instagram media file (FEED_CONTRACT §3.7, snake_case).
+ *
+ * **Media URL rule (load-bearing, §3.7):** these URLs are the *re-hosted* MediaRecord CDN
+ * URLs — never the expiring `instagram_post_files.img_url`/`video_url` columns. Files whose
+ * re-hosting hasn't completed are omitted server-side, so a shipped file always has at least
+ * its primary URL (`image_url` for images, `video_url` for videos). A video thumbnail
+ * (`image_url` on a `video` file) MAY still be null when the thumb hasn't re-hosted yet.
+ */
+export interface InstagramFeedFile {
+  media_type: "image" | "video";
+  /** Re-hosted image / video-thumbnail CDN URL; null when unavailable. */
+  image_url: string | null;
+  /** Re-hosted video source CDN URL; null on image files. */
+  video_url: string | null;
+}
+
+/**
+ * Instagram feed list item — the wire shape (FEED_CONTRACT §3.7, snake_case).
+ * Produced by `PublicFeeds::InstagramPostSerializer` on toastability-service. Engagement
+ * counts are `number | null` (e.g. images carry no `view_count`); null counts are omitted
+ * from the mapped prop (never fabricated as `0`).
+ */
+export interface InstagramFeedItem {
+  id: string;
+  /** `instagram_posts.url` permalink; opens instagram.com in a new tab. */
+  permalink: string;
+  caption: string | null;
+  post_type: "image" | "video" | "gallery";
+  /** Original post date (`created_at`, overwritten at ingest with `taken_at_timestamp`). */
+  posted_at: string;
+  like_count: number | null;
+  comment_count: number | null;
+  view_count: number | null;
+  play_count: number | null;
+  location_name: string | null;
+  /** Servable, re-hosted media files (§3.7). Gallery posts carry N; the block uses the first. */
+  files: InstagramFeedFile[];
+}
+
+/**
+ * `InstagramPostItem` — the resolved prop shape bound onto the `instagram-post-grid` block
+ * (FEED_CONTRACT §4.1b). Declared locally as the data-layer wire/prop shape (string-typed —
+ * assignable to the block's `React.ReactNode` caption/date props); requires no `@opensite/ui`
+ * dependency. The §4.1b wire→prop mapping table is the single source of truth for these fields.
+ */
+export interface InstagramPostItem {
+  /** From `id` — string-coerced. */
+  id: string;
+  /** From `permalink` — opens instagram.com in a new tab. */
+  href: string;
+  /** From `files[0].image_url` — required; items without it are skipped (§4.1b). */
+  image: string;
+  /** Truncated `caption`, fallback `"Instagram post"`. */
+  imageAlt?: string;
+  /** From `caption` (the block truncates for display). */
+  caption?: string;
+  /** From `post_type == "video"`. */
+  isVideo?: boolean;
+  /** From `files[0].video_url` — only when `isVideo`. */
+  videoUrl?: string;
+  /** From `posted_at`, formatted `"%b %-d, %Y"` (§4.1). */
+  date?: string;
+  /** From `like_count` — omitted when the wire count is null. */
+  likeCount?: number;
+  /** From `comment_count` — omitted when the wire count is null. */
+  commentCount?: number;
+  /** From `view_count` — omitted when the wire count is null. */
+  viewCount?: number;
+}
+
+/**
+ * Normalized `FeedClient` Instagram list params (FEED_CONTRACT §3.7). `per_page` is clamped
+ * ≤ 50 client-side; every provided filter is serialized on every call.
+ */
+export interface InstagramFeedParams {
+  page?: number;
+  /** Clamped to ≤ 50 client-side. */
+  perPage?: number;
+  /** Caption filter (`ILIKE %#hashtag%`); leading `#` is optional. */
+  hashtag?: string;
+}
+
+/**
  * Normalized `FeedClient` list params. The client is the single place that builds feed URLs
  * (FEED_CONTRACT §7.2) and serializes every provided filter on every call.
  */
@@ -260,6 +347,9 @@ export interface FeedClient {
   getBlog(slug: string): Promise<FeedItemResponse<BlogFeedDetailItem>>;
   listBlogCategories(): Promise<FeedListResponse<BlogFeedTaxonomy>>;
   listBlogTags(): Promise<FeedListResponse<BlogFeedTaxonomy>>;
+  listInstagram(
+    params?: InstagramFeedParams
+  ): Promise<FeedListResponse<InstagramFeedItem>>;
 }
 
 /** Options for {@link resolveBlocks} (FEED_CONTRACT §7.1). */

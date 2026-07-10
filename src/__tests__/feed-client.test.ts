@@ -161,3 +161,49 @@ describe("createFeedClient — success envelopes", () => {
     expect(result.error).toBeUndefined();
   });
 });
+
+describe("createFeedClient — listInstagram URL building (§3.7)", () => {
+  it("scopes to /feeds/instagram with no query when params are empty", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listInstagram();
+    expect(calls[0]).toBe(
+      "https://api.example.com/public_services/websites/site-token-123/feeds/instagram"
+    );
+  });
+
+  it("serializes page, per_page, and hashtag", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listInstagram({ page: 2, perPage: 24, hashtag: "openings" });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("page")).toBe("2");
+    expect(query.get("per_page")).toBe("24");
+    expect(query.get("hashtag")).toBe("openings");
+  });
+
+  it("clamps per_page to MAX_PER_PAGE", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listInstagram({ perPage: 500 });
+    expect(new URL(calls[0]).searchParams.get("per_page")).toBe(String(MAX_PER_PAGE));
+  });
+
+  it("percent-encodes a hashtag containing punctuation (e.g. leading #)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listInstagram({ hashtag: "#grand opening" });
+    // URLSearchParams encodes "#" as %23 and the space as "+".
+    expect(calls[0]).toContain("hashtag=%23grand+opening");
+    expect(new URL(calls[0]).searchParams.get("hashtag")).toBe("#grand opening");
+  });
+
+  it("returns an error envelope on non-2xx (never throws)", async () => {
+    const { fetcher } = recordingFetcher({}, { ok: false, status: 500 });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const result = await client.listInstagram();
+    expect(result.data).toEqual([]);
+    expect(result.meta).toBeNull();
+    expect(result.error?.status).toBe(500);
+  });
+});

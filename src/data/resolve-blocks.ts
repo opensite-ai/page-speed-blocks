@@ -7,10 +7,16 @@ import type {
   FeedResponseMeta,
   FeedSourceContext,
   FeedSourceResolver,
+  InstagramFeedParams,
+  InstagramPostItem,
   ResolveBlocksOptions,
 } from "../types/index.js";
 import { createFeedClient } from "./feed-client.js";
-import { mapBlogFeedDetail, mapBlogFeedItem } from "./mappers.js";
+import {
+  mapBlogFeedDetail,
+  mapBlogFeedItem,
+  mapInstagramFeedItem,
+} from "./mappers.js";
 
 /**
  * Per-block default bind targets (FEED_CONTRACT §2.4). Blocks not listed here fall through
@@ -23,6 +29,8 @@ export const DEFAULT_BIND_TARGETS: Record<string, string> = {
   "carousel-gradient-overlay": "items",
   "carousel-demo-link": "items",
   "carousel-gradient-text": "items",
+  // Phase 3: Instagram gallery block (§4.1b — lockstep with dashtrack-ai + @opensite/ui).
+  "instagram-post-grid": "items",
 };
 
 /** Final fallback bind target (FEED_CONTRACT §2.3 rule 6). */
@@ -157,6 +165,61 @@ const resolveBlogFeed: FeedSourceResolver = async ({
   return [withFeedMeta(inlined, okMeta("blog_feed", response.meta))];
 };
 
+/** Map a symbolic `instagram_feed` `dataSource` to `FeedClient` Instagram list params (§3.7). */
+function dataSourceToInstagramParams(source: DataSource): InstagramFeedParams {
+  const params: InstagramFeedParams = {};
+  if (typeof source.limit === "number") params.perPage = source.limit;
+  if (typeof source.hashtag === "string") params.hashtag = source.hashtag;
+  return params;
+}
+
+/**
+ * Built-in `instagram_feed` resolver. Fetches the list, maps items (skipping imageless posts
+ * per §4.1b), inlines the survivors into the bind target, and attaches `_feedMeta`. Empty and
+ * error states are distinct (FEED_CONTRACT §2.3 rule 5), mirroring `blog_feed` conventions.
+ */
+const resolveInstagramFeed: FeedSourceResolver = async ({
+  block,
+  dataSource,
+  client,
+  bindTarget,
+}) => {
+  const response = await client.listInstagram(dataSourceToInstagramParams(dataSource));
+
+  if (response.error) {
+    return [
+      withFeedMeta(block, {
+        status: "error",
+        reason: "upstream_error",
+        source: "instagram_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  // Skip imageless posts (§4.1b): `mapInstagramFeedItem` returns null when `files[0].image_url`
+  // is absent (e.g. a video whose thumbnail hasn't re-hosted yet).
+  const items = response.data
+    .map(mapInstagramFeedItem)
+    .filter((item): item is InstagramPostItem => item !== null);
+
+  if (items.length === 0) {
+    return [
+      withFeedMeta(block, {
+        status: "empty",
+        reason: "no_instagram_posts",
+        source: "instagram_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  blockProps[bindTarget] = items;
+
+  return [withFeedMeta({ ...block, blockProps }, okMeta("instagram_feed", response.meta))];
+};
+
 /** Extract a slug from the last non-empty path segment. */
 function lastPathSegment(path?: string): string | undefined {
   if (!path) return undefined;
@@ -250,10 +313,11 @@ const resolveBlogPost: FeedSourceResolver = async ({
   ];
 };
 
-/** Built-in resolvers keyed by source type. Phase 1: blog only. */
+/** Built-in resolvers keyed by source type. Phase 1: blog; Phase 3: instagram. */
 const BUILT_IN_SOURCES: Record<string, FeedSourceResolver> = {
   blog_feed: resolveBlogFeed,
   blog_post: resolveBlogPost,
+  instagram_feed: resolveInstagramFeed,
 };
 
 /**

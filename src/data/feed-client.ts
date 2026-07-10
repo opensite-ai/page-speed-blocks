@@ -9,6 +9,8 @@ import type {
   FeedItemResponse,
   FeedListResponse,
   FeedResponseMeta,
+  InstagramFeedItem,
+  InstagramFeedParams,
 } from "../types/index.js";
 
 /** Upper bound for `per_page` (FEED_CONTRACT §3.2 — clamped client-side too). */
@@ -35,6 +37,27 @@ function buildBlogQuery(params: BlogFeedParams): string {
   if (params.query) query.set("query", params.query);
   if (params.sortBy) query.set("sort_by", params.sortBy);
   if (params.sortDir) query.set("sort_dir", params.sortDir);
+
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
+/**
+ * Serialize normalized Instagram list params into wire query params (§3.7).
+ * Mirrors `buildBlogQuery`: every provided filter is serialized on every call (legacy bug #1),
+ * values are URL-encoded by `URLSearchParams`, and `per_page` is clamped to ≤ 50.
+ */
+function buildInstagramQuery(params: InstagramFeedParams): string {
+  const query = new URLSearchParams();
+
+  if (typeof params.page === "number") {
+    query.set("page", String(params.page));
+  }
+  if (typeof params.perPage === "number") {
+    const clamped = Math.min(Math.max(1, Math.trunc(params.perPage)), MAX_PER_PAGE);
+    query.set("per_page", String(clamped));
+  }
+  if (params.hashtag) query.set("hashtag", params.hashtag);
 
   const serialized = query.toString();
   return serialized ? `?${serialized}` : "";
@@ -124,6 +147,11 @@ export function createFeedClient(options: CreateFeedClientOptions): FeedClient {
     },
     listBlogTags() {
       return requestList<BlogFeedTaxonomy>(`${feedsRoot}/blog_tags`);
+    },
+    listInstagram(params: InstagramFeedParams = {}) {
+      return requestList<InstagramFeedItem>(
+        `${feedsRoot}/instagram${buildInstagramQuery(params)}`
+      );
     },
   };
 }

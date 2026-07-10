@@ -3,6 +3,8 @@ import type {
   BlogFeedDetailItem,
   BlogPostItem,
   BlogPostDetail,
+  InstagramFeedItem,
+  InstagramPostItem,
 } from "../types/index.js";
 
 /**
@@ -57,4 +59,78 @@ export function mapBlogFeedDetail(item: BlogFeedDetailItem): BlogPostDetail {
     tags: (item.blog_tags ?? []).map((tag) => tag.name),
     articles: (item.related ?? []).map(mapBlogFeedItem),
   };
+}
+
+/** Alt-text fallback when a post has no usable caption (FEED_CONTRACT §4.1b). */
+const INSTAGRAM_ALT_FALLBACK = "Instagram post";
+/** Max length of the caption-derived alt text before it is truncated. */
+const INSTAGRAM_ALT_MAX_LENGTH = 100;
+
+/**
+ * Derive `imageAlt` from a caption (§4.1b). Byte-exact lockstep with the
+ * dashtrack-ai `InstagramFeedResolver#image_alt` hydrator — do NOT change one
+ * side without the other. The rule (identical words in both codebases):
+ *   1. collapse runs of Unicode whitespace to a single space
+ *   2. trim Unicode whitespace from both ends
+ *   3. if empty -> "Instagram post"
+ *   4. length is measured in CODEPOINTS (not bytes / UTF-16 code units), so
+ *      surrogate-pair emoji are never split
+ *   5. if <= 100 codepoints return as-is, else take the first 100 codepoints,
+ *      strip trailing Unicode whitespace from the cut, and append "…"
+ * JS /\s/u and Ruby [[:space:]] agree on the practical whitespace set
+ * (space, NBSP U+00A0, newline, tab, ideographic space U+3000).
+ */
+function instagramImageAlt(caption?: string | null): string {
+  if (!caption) return INSTAGRAM_ALT_FALLBACK;
+  const normalized = caption.replace(/\s+/gu, " ").trim();
+  if (!normalized) return INSTAGRAM_ALT_FALLBACK;
+  const codepoints = Array.from(normalized);
+  if (codepoints.length <= INSTAGRAM_ALT_MAX_LENGTH) return normalized;
+  return `${codepoints
+    .slice(0, INSTAGRAM_ALT_MAX_LENGTH)
+    .join("")
+    .replace(/\s+$/u, "")}…`;
+}
+
+/**
+ * Map a wire `InstagramFeedItem` (§3.7) to an `InstagramPostItem` prop shape (§4.1b).
+ * This is the client-side mirror of the dashtrack-ai Instagram hydrator — keep in lockstep
+ * with the §4.1b mapping table.
+ *
+ * Returns `null` when the post has no servable image (`files[0].image_url` absent): §4.1b
+ * requires `image`, and imageless items are skipped rather than rendered without a tile image.
+ * Engagement counts are inlined only when the wire value is a number — absent (`null`) counts
+ * are omitted, never fabricated as `0`.
+ */
+export function mapInstagramFeedItem(
+  item: InstagramFeedItem
+): InstagramPostItem | null {
+  const primary = item.files?.[0];
+  const image = primary?.image_url;
+  // §4.1b: `image` is required — skip items without a servable first-file image.
+  if (!image) return null;
+
+  const result: InstagramPostItem = {
+    id: String(item.id),
+    href: item.permalink,
+    image,
+    imageAlt: instagramImageAlt(item.caption),
+  };
+
+  if (item.caption) result.caption = item.caption;
+
+  if (item.post_type === "video") {
+    result.isVideo = true;
+    // Only surface the video source when present (§4.1b: `videoUrl` only when `isVideo`).
+    if (primary?.video_url) result.videoUrl = primary.video_url;
+  }
+
+  const date = formatFeedDate(item.posted_at);
+  if (date) result.date = date;
+
+  if (typeof item.like_count === "number") result.likeCount = item.like_count;
+  if (typeof item.comment_count === "number") result.commentCount = item.comment_count;
+  if (typeof item.view_count === "number") result.viewCount = item.view_count;
+
+  return result;
 }
