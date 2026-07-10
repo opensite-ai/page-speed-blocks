@@ -17,8 +17,13 @@ export {
   DEFAULT_BIND_TARGET,
 } from "./resolve-blocks.js";
 
-// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 hydrator tables).
-export { mapBlogFeedItem, mapBlogFeedDetail, formatFeedDate } from "./mappers.js";
+// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 / §4.1b hydrator tables).
+export {
+  mapBlogFeedItem,
+  mapBlogFeedDetail,
+  mapInstagramFeedItem,
+  formatFeedDate,
+} from "./mappers.js";
 
 // Reserved renderer keys for dynamic-block affordances (FEED_CONTRACT §7.3).
 export {
@@ -40,6 +45,10 @@ export type {
   BlogPostItem,
   BlogPostDetail,
   BlogFeedParams,
+  InstagramFeedFile,
+  InstagramFeedItem,
+  InstagramPostItem,
+  InstagramFeedParams,
   CreateFeedClientOptions,
   FeedClient,
   ResolveBlocksOptions,

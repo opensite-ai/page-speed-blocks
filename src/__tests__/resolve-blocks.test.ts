@@ -9,6 +9,7 @@ import type {
   BlogFeedItem,
   BlogFeedDetailItem,
   FeedSourceResolver,
+  InstagramFeedItem,
 } from "../types/index.js";
 
 const BASE = "https://api.example.com";
@@ -236,6 +237,126 @@ describe("resolveBlocks — blog_post detail (§4.3)", () => {
     const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
     expect(out._feedMeta?.status).toBe("error");
     expect(out._feedMeta?.reason).toBe("upstream_error");
+  });
+});
+
+describe("resolveBindTarget — instagram-post-grid (§4.1b)", () => {
+  it("defaults instagram-post-grid to items", () => {
+    expect(DEFAULT_BIND_TARGETS["instagram-post-grid"]).toBe("items");
+    const block: Block = { _id: "1", _type: "instagram-post-grid", dataSource: { type: "instagram_feed" } };
+    expect(resolveBindTarget(block)).toBe("items");
+  });
+});
+
+describe("resolveBlocks — instagram_feed (§3.7 / §4.1b)", () => {
+  const igImage: InstagramFeedItem = {
+    id: "17900000000000001",
+    permalink: "https://www.instagram.com/p/ABC123/",
+    caption: "Grand opening!",
+    post_type: "image",
+    posted_at: "2026-07-01T09:00:00Z",
+    like_count: 12,
+    comment_count: 3,
+    view_count: null,
+    play_count: null,
+    location_name: null,
+    files: [{ media_type: "image", image_url: "https://cdn.ing/ig/1.jpg", video_url: null }],
+  };
+  const igVideo: InstagramFeedItem = {
+    ...igImage,
+    id: "17900000000000002",
+    post_type: "video",
+    view_count: 480,
+    play_count: 502,
+    files: [
+      {
+        media_type: "video",
+        image_url: "https://cdn.ing/ig/thumb.jpg",
+        video_url: "https://cdn.ing/ig/clip.mp4",
+      },
+    ],
+  };
+
+  it("inlines mapped items into items, retains dataSource, attaches ok meta", async () => {
+    const fetcher = routeFetcher([
+      [
+        "/feeds/instagram",
+        { data: [igImage, igVideo], meta: { page: 1, per_page: 12, total_pages: 1, total_records: 2 } },
+      ],
+    ]);
+    const block: Block = {
+      _id: "ig1",
+      _type: "instagram-post-grid",
+      blockProps: { heading: "Follow us" },
+      dataSource: { type: "instagram_feed", limit: 12 },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps?.heading).toBe("Follow us"); // authored prop untouched
+    const items = out.blockProps?.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      id: "17900000000000001",
+      href: "https://www.instagram.com/p/ABC123/",
+      image: "https://cdn.ing/ig/1.jpg",
+      likeCount: 12,
+    });
+    expect(items[1]).toMatchObject({ isVideo: true, videoUrl: "https://cdn.ing/ig/clip.mp4" });
+    expect(out.dataSource).toEqual(block.dataSource);
+    expect(out._feedMeta).toMatchObject({
+      status: "ok",
+      source: "instagram_feed",
+      page: 1,
+      perPage: 12,
+      totalRecords: 2,
+    });
+  });
+
+  it("serializes limit as per_page and passes hashtag through", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [igImage], meta: null });
+    }) as typeof fetch;
+    const block: Block = {
+      _id: "1",
+      _type: "instagram-post-grid",
+      dataSource: { type: "instagram_feed", limit: 8, hashtag: "openings" },
+    };
+    await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("per_page")).toBe("8");
+    expect(query.get("hashtag")).toBe("openings");
+  });
+
+  it("skips imageless posts; all-imageless -> empty/no_instagram_posts", async () => {
+    const imageless: InstagramFeedItem = {
+      ...igImage,
+      files: [{ media_type: "video", image_url: null, video_url: "https://cdn.ing/ig/clip.mp4" }],
+    };
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [imageless], meta: null }]]);
+    const block: Block = { _id: "1", _type: "instagram-post-grid", dataSource: { type: "instagram_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("empty");
+    expect(out._feedMeta?.reason).toBe("no_instagram_posts");
+    expect(out.blockProps?.items).toBeUndefined();
+  });
+
+  it("empty feed -> status empty, no items inlined", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [], meta: null }]]);
+    const block: Block = { _id: "1", _type: "instagram-post-grid", dataSource: { type: "instagram_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("empty");
+    expect(out._feedMeta?.reason).toBe("no_instagram_posts");
+  });
+
+  it("fetch failure -> status error/upstream_error", async () => {
+    const fetcher = routeFetcher([], true);
+    const block: Block = { _id: "1", _type: "instagram-post-grid", dataSource: { type: "instagram_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("error");
+    expect(out._feedMeta?.reason).toBe("upstream_error");
+    expect(out.blockProps?.items).toBeUndefined();
   });
 });
 
