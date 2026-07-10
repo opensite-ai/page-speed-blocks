@@ -100,10 +100,10 @@
     "prepublishOnly": "pnpm run test && pnpm run build"
   },
   "dependencies": {
-    "@opensite/ui": "3.3.5",
+    "@opensite/ui": "3.9.0",
     "@page-speed/img": "0.4.9",
     "@page-speed/pressable": "0.1.0",
-    "@page-speed/router": "1.1.0",
+    "@page-speed/router": "1.2.0",
     "@page-speed/video": "0.0.7"
   },
   "peerDependencies": {
