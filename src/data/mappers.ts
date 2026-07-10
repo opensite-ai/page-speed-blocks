@@ -53,7 +53,8 @@ export function mapBlogFeedDetail(item: BlogFeedDetailItem): BlogPostDetail {
   return {
     ...mapBlogFeedItem(item),
     markdownString: item.body,
-    tags: item.blog_tags.map((tag) => tag.name),
+    // Defensive: wire arrays may be absent/null on partial payloads — never assume presence.
+    tags: (item.blog_tags ?? []).map((tag) => tag.name),
     articles: (item.related ?? []).map(mapBlogFeedItem),
   };
 }

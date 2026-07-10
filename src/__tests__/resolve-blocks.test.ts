@@ -218,6 +218,25 @@ describe("resolveBlocks — blog_post detail (§4.3)", () => {
     expect(out._feedMeta?.status).toBe("error");
     expect(out._feedMeta?.reason).toBe("unresolved_slug");
   });
+
+  it("maps a 404 to empty/post_not_found (SPA not-found detection, §2.3 rule 5)", async () => {
+    // getBlog returns { data: null, error: { status: 404 } } → must be an empty state so
+    // customer-sites' matched-but-missing detection (reason === "post_not_found") fires.
+    const fetcher = (async () => jsonResponse({ data: null }, false, 404)) as typeof fetch;
+    const block: Block = { _id: "1", _type: "article-hero-prose", dataSource: { type: "blog_post", slug: "gone" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("empty");
+    expect(out._feedMeta?.reason).toBe("post_not_found");
+    expect(out._feedMeta?.source).toBe("blog_post");
+  });
+
+  it("maps a non-404 error to error/upstream_error", async () => {
+    const fetcher = (async () => jsonResponse({ data: null }, false, 500)) as typeof fetch;
+    const block: Block = { _id: "1", _type: "article-hero-prose", dataSource: { type: "blog_post", slug: "boom" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("error");
+    expect(out._feedMeta?.reason).toBe("upstream_error");
+  });
 });
 
 describe("resolveBlocks — unknown source", () => {
@@ -242,6 +261,44 @@ describe("resolveBlocks — blocks without a dataSource pass through", () => {
     const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
     expect(out).toEqual(block);
     expect(out._feedMeta).toBeUndefined();
+  });
+});
+
+describe("resolveBlocks — per-block error isolation (§2.3 rule 5)", () => {
+  it("a resolver that throws degrades only its own block; siblings resolve normally", async () => {
+    const throwingSource: FeedSourceResolver = async () => {
+      throw new Error("resolver blew up");
+    };
+    const fetcher = routeFetcher([
+      ["/feeds/blogs", { data: [sampleItem], meta: { page: 1, per_page: 9, total_pages: 1, total_records: 1 } }],
+    ]);
+    const input: Block[] = [
+      { _id: "boom", _type: "hero-event-registration", dataSource: { type: "events_feed" } },
+      { _id: "ok", _type: "blog-grid-author-cards", dataSource: { type: "blog_feed", limit: 9 } },
+    ];
+
+    // The whole pass must resolve (never reject) despite the throwing block.
+    const out = await resolveBlocks(input, {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher,
+      sources: { events_feed: throwingSource },
+    });
+
+    expect(out).toHaveLength(2);
+    const [failed, healthy] = out;
+    // failed block carries the isolation meta
+    expect(failed._id).toBe("boom");
+    expect(failed._feedMeta).toMatchObject({
+      status: "error",
+      reason: "resolver_threw",
+      source: "events_feed",
+    });
+    expect(failed._feedMeta?.resolvedAt).toBeTruthy();
+    // sibling resolved normally
+    expect(healthy._id).toBe("ok");
+    expect(healthy._feedMeta?.status).toBe("ok");
+    expect((healthy.blockProps?.posts as unknown[])).toHaveLength(1);
   });
 });
 

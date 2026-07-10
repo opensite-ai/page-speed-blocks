@@ -195,6 +195,19 @@ const resolveBlogPost: FeedSourceResolver = async ({
 
   const response = await client.getBlog(slug);
   if (response.error) {
+    // A 404 is "matched route, missing post" — an empty state, not an upstream failure.
+    // Customer-sites' SPA not-found detection keys on reason === "post_not_found"
+    // (FEED_CONTRACT §2.3 rule 5), so a 404 must never collapse into upstream_error.
+    if (response.error.status === 404) {
+      return [
+        withFeedMeta(block, {
+          status: "empty",
+          reason: "post_not_found",
+          source: "blog_post",
+          resolvedAt: nowIso(),
+        }),
+      ];
+    }
     return [
       withFeedMeta(block, {
         status: "error",
@@ -204,6 +217,7 @@ const resolveBlogPost: FeedSourceResolver = async ({
       }),
     ];
   }
+  // Defensive fallback: a 2xx with no `data` payload is still "not found".
   if (!response.data) {
     return [
       withFeedMeta(block, {
@@ -290,7 +304,21 @@ export async function resolveBlocks(
         path: options.path,
         bindTarget: resolveBindTarget(block),
       };
-      return resolver(ctx);
+      // Per-block error isolation (FEED_CONTRACT §2.3 rule 5): a resolver that throws or
+      // rejects must degrade only its own block, never the whole `Promise.all`. The failed
+      // block carries an error meta; every other block resolves normally.
+      try {
+        return await resolver(ctx);
+      } catch {
+        return [
+          withFeedMeta(block, {
+            status: "error",
+            reason: "resolver_threw",
+            source: dataSource.type,
+            resolvedAt: nowIso(),
+          }),
+        ];
+      }
     })
   );
 
