@@ -18,7 +18,8 @@ interface LinkBlockProps {
  * Renders as Pressable with href
  */
 export const linkRenderer: BlockRenderer = ({ block, context }) => {
-  const props = (block.props || {}) as LinkBlockProps;
+  // `blockProps` is canonical (the declared field); `props` is a legacy fallback for older payloads.
+  const props = ((block.blockProps ?? block.props) || {}) as LinkBlockProps;
   const {
     href,
     target,

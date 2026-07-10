@@ -29,7 +29,22 @@ export {
   clearRegistry,
   getRegisteredTypes,
   registerRenderers,
+  FALLBACK_RENDERER_KEY,
+  FEED_ERROR_RENDERER_KEY,
 } from "./registry/index.js";
+
+// Re-export the dynamic data feed layer (FEED_CONTRACT §7)
+export {
+  createFeedClient,
+  MAX_PER_PAGE,
+  resolveBlocks,
+  resolveBindTarget,
+  DEFAULT_BIND_TARGETS,
+  DEFAULT_BIND_TARGET,
+  mapBlogFeedItem,
+  mapBlogFeedDetail,
+  formatFeedDate,
+} from "./data/index.js";
 
 // Re-export types
 export type {
@@ -39,6 +54,23 @@ export type {
   BlockRendererProps,
   BlockRenderer,
   RegistryEntry,
+  DataSource,
+  FeedMeta,
+  FeedError,
+  FeedResponseMeta,
+  FeedListResponse,
+  FeedItemResponse,
+  BlogFeedTaxonomy,
+  BlogFeedItem,
+  BlogFeedDetailItem,
+  BlogPostItem,
+  BlogPostDetail,
+  BlogFeedParams,
+  CreateFeedClientOptions,
+  FeedClient,
+  ResolveBlocksOptions,
+  FeedSourceContext,
+  FeedSourceResolver,
 } from "./types/index.js";
 
 // Re-export utilities

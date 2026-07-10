@@ -18,7 +18,8 @@ interface PressableBlockProps {
  * Uses @page-speed/pressable directly instead of the @opensite/ui pass-through
  */
 export const pressableRenderer: BlockRenderer = ({ block, context }) => {
-  const props = (block.props || {}) as PressableBlockProps;
+  // `blockProps` is canonical (the declared field); `props` is a legacy fallback for older payloads.
+  const props = ((block.blockProps ?? block.props) || {}) as PressableBlockProps;
   const {
     href,
     onClick,

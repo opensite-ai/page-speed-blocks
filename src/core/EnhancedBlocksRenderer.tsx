@@ -15,11 +15,12 @@ export const EnhancedBlocksRenderer: React.FC<EnhancedBlocksRendererProps> = ({
   blocks,
   className,
   wrapper,
+  data,
   disableRouter = false,
 }) => {
   return (
     <BlocksProvider disableRouter={disableRouter}>
-      <BlocksRenderer blocks={blocks} className={className} wrapper={wrapper} />
+      <BlocksRenderer blocks={blocks} className={className} wrapper={wrapper} data={data} />
     </BlocksProvider>
   );
 };
