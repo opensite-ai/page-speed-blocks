@@ -92,6 +92,15 @@ export interface DataSource {
   profile?: string;
   /** `instagram_feed` caption filter — `ILIKE %#hashtag%` (§3.7); leading `#` optional. */
   hashtag?: string;
+  /**
+   * `testimonials_feed` curation floor (§3.8). Absent → server defaults to `4`; an explicit
+   * `1` shows every rated review. `min_rating` implies `rating IS NOT NULL` server-side.
+   */
+  minRating?: number;
+  /** `testimonials_feed` platform filter — `review_type` enum keys (§3.8); unknown key → empty. */
+  platforms?: string[];
+  /** `testimonials_feed` location filter — must be a member of the website's locations (§3.8). */
+  locationId?: number | string;
   /** Override the bind target prop (else per-block default, else `"posts"`). */
   bindTo?: string;
   /** Sources are intentionally open (future filters). */
@@ -314,6 +323,101 @@ export interface InstagramFeedParams {
 }
 
 /**
+ * Reviews / testimonials feed list item — the wire shape (FEED_CONTRACT §3.8, snake_case).
+ * Produced by `PublicFeeds::ReviewSerializer` on toastability-service. The field list is
+ * locked: nothing beyond these eight fields is present on the wire.
+ */
+export interface ReviewFeedItem {
+  /** `location_reviews.id` — a uuid, string-coerced. */
+  id: string;
+  reviewer_name: string;
+  /** `int | null` passthrough — recommendation-only reviews coerce to 5 at ingest. */
+  rating: number | null;
+  content: string;
+  /** `review_type` enum KEY string (e.g. `"google"`, `"yelp"`). */
+  platform: string;
+  time_created: string;
+  /** Reviewer's platform profile URL; null when absent. Maps to `linkConfig` (§4.1c). */
+  profile_url: string | null;
+  /**
+   * ⚠ Hotlinked platform avatar URL (§3.8 media caveat). Present on the wire for future use
+   * but **intentionally NOT mapped by Phase 2 hydration** (rot-prone images must not reach
+   * client sites). The mappers below never read this field.
+   */
+  avatar_url: string | null;
+}
+
+/**
+ * Base testimonial prop shape (FEED_CONTRACT §4.1c). Declared locally as a string-typed
+ * wire/prop shape (assignable to the block's `React.ReactNode` text props) — requires no
+ * `@opensite/ui` dependency, mirroring `InstagramPostItem`. `avatarSrc` is intentionally
+ * absent (Phase 2 does not map avatars).
+ */
+export interface TestimonialItem {
+  /** From `content` — plain string. */
+  quote: string;
+  /** From `reviewer_name`. */
+  author?: string;
+  /** From `rating` — only when numeric (never fabricated). */
+  rating?: number;
+  /** From `profile_url` + `platform` — `{ label: "Read on <Platform>", href }`, only when `profile_url`. */
+  linkConfig?: { label: string; href: string };
+}
+
+/**
+ * `ReviewItem` prop shape for `testimonials-list-verified` / `testimonials-images-helpful`
+ * (FEED_CONTRACT §4.1c). Coerced from `TestimonialItem`: `quote` → `content`, plus a required
+ * `title` (content truncated at a word boundary) and a `date`. `verified` is always `true` —
+ * every feed item is a platform-ingested review.
+ */
+export interface ReviewItem {
+  /** From `content` (renamed from `quote`). */
+  content: string;
+  /** Required — `content` truncated at a word boundary (~40 chars). */
+  title: string;
+  /** From `rating` — only when numeric (never fabricated). */
+  rating?: number;
+  /** From `reviewer_name`. */
+  author?: string;
+  /** From `time_created`, formatted `"%b %-d, %Y"` (§4.1). */
+  date?: string;
+  /** Always `true` — feed items are platform-ingested reviews (§4.1c). */
+  verified: boolean;
+}
+
+/**
+ * `SocialTestimonialItem` prop shape for `testimonials-twitter-cards` (FEED_CONTRACT §4.1c).
+ * Uses `content` (not `quote`); `handle` is intentionally unmapped.
+ */
+export interface SocialTestimonialItem {
+  /** From `content` (renamed from `quote`). */
+  content: string;
+  /** From `reviewer_name`. */
+  author?: string;
+  /** From `profile_url` + `platform`, only when `profile_url` present. */
+  linkConfig?: { label: string; href: string };
+}
+
+/**
+ * Normalized `FeedClient` reviews list params (FEED_CONTRACT §3.8). `perPage` is clamped ≤ 50
+ * client-side; `platforms` serializes as repeated `platforms[]` params; every provided filter
+ * is resent on every call.
+ */
+export interface ReviewFeedParams {
+  page?: number;
+  /** Clamped to ≤ 50 client-side. */
+  perPage?: number;
+  /** Maps to `min_rating`; server defaults to 4 when absent. */
+  minRating?: number;
+  /** `review_type` enum keys; serialized as repeated `platforms[]` params. */
+  platforms?: string[];
+  /** Maps to `location_id`. */
+  locationId?: number | string;
+  sortBy?: "time_created" | "rating";
+  sortDir?: "asc" | "desc";
+}
+
+/**
  * Normalized `FeedClient` list params. The client is the single place that builds feed URLs
  * (FEED_CONTRACT §7.2) and serializes every provided filter on every call.
  */
@@ -350,6 +454,9 @@ export interface FeedClient {
   listInstagram(
     params?: InstagramFeedParams
   ): Promise<FeedListResponse<InstagramFeedItem>>;
+  listReviews(
+    params?: ReviewFeedParams
+  ): Promise<FeedListResponse<ReviewFeedItem>>;
 }
 
 /** Options for {@link resolveBlocks} (FEED_CONTRACT §7.1). */

@@ -207,3 +207,94 @@ describe("createFeedClient — listInstagram URL building (§3.7)", () => {
     expect(result.error?.status).toBe(500);
   });
 });
+
+describe("createFeedClient — listReviews URL building (§3.8)", () => {
+  it("scopes to /feeds/reviews with no query when params are empty", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews();
+    expect(calls[0]).toBe(
+      "https://api.example.com/public_services/websites/site-token-123/feeds/reviews"
+    );
+  });
+
+  it("serializes page, per_page, min_rating, location_id, sort_by, and sort_dir", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews({
+      page: 2,
+      perPage: 24,
+      minRating: 4,
+      locationId: 1093,
+      sortBy: "rating",
+      sortDir: "asc",
+    });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("page")).toBe("2");
+    expect(query.get("per_page")).toBe("24");
+    expect(query.get("min_rating")).toBe("4");
+    expect(query.get("location_id")).toBe("1093");
+    expect(query.get("sort_by")).toBe("rating");
+    expect(query.get("sort_dir")).toBe("asc");
+  });
+
+  it("clamps per_page to MAX_PER_PAGE", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews({ perPage: 500 });
+    expect(new URL(calls[0]).searchParams.get("per_page")).toBe(String(MAX_PER_PAGE));
+  });
+
+  it("serializes platforms as REPEATED platforms[] params (Rack array binding)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews({ platforms: ["google", "yelp", "facebook"] });
+    // The raw URL carries the bracket key percent-encoded, repeated once per platform.
+    expect(calls[0]).toContain("platforms%5B%5D=google");
+    expect(calls[0]).toContain("platforms%5B%5D=yelp");
+    expect(calls[0]).toContain("platforms%5B%5D=facebook");
+    // Round-trips back to the array under the literal bracket key.
+    const query = new URL(calls[0]).searchParams;
+    expect(query.getAll("platforms[]")).toEqual(["google", "yelp", "facebook"]);
+  });
+
+  it("drops empty platform entries but keeps a single valid one", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews({ platforms: ["", "google"] });
+    expect(new URL(calls[0]).searchParams.getAll("platforms[]")).toEqual(["google"]);
+  });
+
+  it("percent-encodes a platform value with punctuation", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listReviews({ platforms: ["a b&c"] });
+    expect(new URL(calls[0]).searchParams.getAll("platforms[]")).toEqual(["a b&c"]);
+  });
+
+  it("re-sends every filter on every page request (legacy bug #1)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const filters = { minRating: 4, platforms: ["google"], locationId: 7, sortBy: "rating" as const };
+    await client.listReviews({ ...filters, page: 1 });
+    await client.listReviews({ ...filters, page: 2 });
+    for (const url of calls) {
+      const query = new URL(url).searchParams;
+      expect(query.get("min_rating")).toBe("4");
+      expect(query.getAll("platforms[]")).toEqual(["google"]);
+      expect(query.get("location_id")).toBe("7");
+      expect(query.get("sort_by")).toBe("rating");
+    }
+    expect(new URL(calls[0]).searchParams.get("page")).toBe("1");
+    expect(new URL(calls[1]).searchParams.get("page")).toBe("2");
+  });
+
+  it("returns an error envelope on non-2xx (never throws)", async () => {
+    const { fetcher } = recordingFetcher({}, { ok: false, status: 500 });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const result = await client.listReviews();
+    expect(result.data).toEqual([]);
+    expect(result.meta).toBeNull();
+    expect(result.error?.status).toBe(500);
+  });
+});

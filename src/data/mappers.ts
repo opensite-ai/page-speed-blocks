@@ -5,6 +5,10 @@ import type {
   BlogPostDetail,
   InstagramFeedItem,
   InstagramPostItem,
+  ReviewFeedItem,
+  ReviewItem,
+  SocialTestimonialItem,
+  TestimonialItem,
 } from "../types/index.js";
 
 /**
@@ -132,5 +136,116 @@ export function mapInstagramFeedItem(
   if (typeof item.comment_count === "number") result.commentCount = item.comment_count;
   if (typeof item.view_count === "number") result.viewCount = item.view_count;
 
+  return result;
+}
+
+/**
+ * Human-readable platform labels for the `review_type` enum keys (§3.8). Used to build the
+ * `linkConfig` label (`"Read on <Platform>"`, §4.1c). Unknown keys fall back to a capitalized
+ * form; a blank key falls back to a generic phrase (never `"Read on "`).
+ */
+const PLATFORM_LABELS: Record<string, string> = {
+  yelp: "Yelp",
+  google: "Google",
+  applemaps: "Apple Maps",
+  doordash: "DoorDash",
+  facebook: "Facebook",
+  foursquare: "Foursquare",
+  grubhub: "Grubhub",
+  opentable: "OpenTable",
+  tripadvisor: "Tripadvisor",
+  ubereats: "Uber Eats",
+  bbb: "BBB",
+  bing: "Bing",
+  booking: "Booking.com",
+  citysearch: "Citysearch",
+  expedia: "Expedia",
+  justeat: "Just Eat",
+  orbitz: "Orbitz",
+  travelocity: "Travelocity",
+};
+
+/** Resolve a display label for a `review_type` enum key (§4.1c). */
+export function platformLabel(platform?: string | null): string {
+  if (!platform) return "the review site";
+  return (
+    PLATFORM_LABELS[platform] ??
+    platform.charAt(0).toUpperCase() + platform.slice(1)
+  );
+}
+
+/**
+ * Build the `linkConfig` for a review (§4.1c) — `{ label: "Read on <Platform>", href }`.
+ * Returns `undefined` when `profile_url` is absent (a dead link degrades harmlessly, but we
+ * still do not synthesize one). Shared by the base and social testimonial mappers.
+ */
+function reviewLinkConfig(
+  item: ReviewFeedItem
+): { label: string; href: string } | undefined {
+  if (!item.profile_url) return undefined;
+  return { label: `Read on ${platformLabel(item.platform)}`, href: item.profile_url };
+}
+
+/** Max length (codepoints) of the review `title` derived from `content` (§4.1c, ~40 chars). */
+const REVIEW_TITLE_MAX_LENGTH = 40;
+
+/**
+ * Derive a `ReviewItem.title` from review `content` (§4.1c): whitespace-collapsed and, when
+ * longer than ~40 codepoints, cut at the last word boundary within the window with an ellipsis
+ * appended. Codepoint-based (never splits surrogate-pair emoji), mirroring the IG alt rule.
+ */
+function reviewTitle(content: string): string {
+  const normalized = content.replace(/\s+/gu, " ").trim();
+  const codepoints = Array.from(normalized);
+  if (codepoints.length <= REVIEW_TITLE_MAX_LENGTH) return normalized;
+  const window = codepoints.slice(0, REVIEW_TITLE_MAX_LENGTH).join("");
+  const lastSpace = window.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? window.slice(0, lastSpace) : window;
+  return `${cut.replace(/\s+$/u, "")}…`;
+}
+
+/**
+ * Map a wire `ReviewFeedItem` (§3.8) to the base `TestimonialItem` prop shape (§4.1c).
+ * Client-side mirror of the dashtrack-ai testimonials hydrator — keep in lockstep with the
+ * §4.1c mapping table. `rating` is inlined only when numeric (never fabricated); `avatar_url`
+ * is deliberately NOT mapped (§3.8 media caveat).
+ */
+export function mapTestimonialItem(item: ReviewFeedItem): TestimonialItem {
+  const result: TestimonialItem = { quote: item.content };
+  if (item.reviewer_name) result.author = item.reviewer_name;
+  if (typeof item.rating === "number") result.rating = item.rating;
+  const linkConfig = reviewLinkConfig(item);
+  if (linkConfig) result.linkConfig = linkConfig;
+  return result;
+}
+
+/**
+ * Coerce a wire `ReviewFeedItem` into the `ReviewItem` shape (§4.1c) for
+ * `testimonials-list-verified` / `testimonials-images-helpful`: `content` (renamed from
+ * `quote`), a required word-boundary `title`, a formatted `date`, and `verified: true`
+ * (every feed item is platform-ingested). `rating` only when numeric — never fabricated.
+ */
+export function mapReviewItem(item: ReviewFeedItem): ReviewItem {
+  const result: ReviewItem = {
+    content: item.content,
+    title: reviewTitle(item.content),
+    verified: true,
+  };
+  if (typeof item.rating === "number") result.rating = item.rating;
+  if (item.reviewer_name) result.author = item.reviewer_name;
+  const date = formatFeedDate(item.time_created);
+  if (date) result.date = date;
+  return result;
+}
+
+/**
+ * Coerce a wire `ReviewFeedItem` into the `SocialTestimonialItem` shape (§4.1c) for
+ * `testimonials-twitter-cards`: `content` (renamed from `quote`); `handle` is unmapped.
+ */
+export function mapSocialTestimonialItem(item: ReviewFeedItem): SocialTestimonialItem {
+  const result: SocialTestimonialItem = { content: item.content };
+  if (item.reviewer_name) result.author = item.reviewer_name;
+  const linkConfig = reviewLinkConfig(item);
+  if (linkConfig) result.linkConfig = linkConfig;
   return result;
 }

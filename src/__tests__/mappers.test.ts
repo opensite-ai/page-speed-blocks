@@ -3,12 +3,17 @@ import {
   mapBlogFeedDetail,
   mapBlogFeedItem,
   mapInstagramFeedItem,
+  mapReviewItem,
+  mapSocialTestimonialItem,
+  mapTestimonialItem,
+  platformLabel,
   formatFeedDate,
 } from "../data/mappers.js";
 import type {
   BlogFeedDetailItem,
   BlogFeedItem,
   InstagramFeedItem,
+  ReviewFeedItem,
 } from "../types/index.js";
 
 const baseItem: BlogFeedItem = {
@@ -202,6 +207,132 @@ describe("mapInstagramFeedItem (§4.1b)", () => {
     const alt = altFor(`${"a".repeat(99)} ${"b".repeat(50)}`);
     expect(alt).toBe(`${"a".repeat(99)}…`);
     expect(alt?.length).toBe(100);
+  });
+});
+
+describe("testimonial mappers (§4.1c)", () => {
+  const review: ReviewFeedItem = {
+    id: "9c3b7a10-0000-4000-8000-000000000001",
+    reviewer_name: "Dana P.",
+    rating: 5,
+    content: "Absolutely wonderful service and the food was incredible.",
+    platform: "google",
+    time_created: "2026-07-01T09:00:00Z",
+    profile_url: "https://www.google.com/maps/contrib/123",
+    // Hotlinked avatar is present on the wire but must never be mapped (§3.8 caveat).
+    avatar_url: "https://lh3.googleusercontent.com/rot-prone.jpg",
+  };
+
+  describe("mapTestimonialItem (base shape)", () => {
+    it("maps content→quote, reviewer_name→author, numeric rating, and linkConfig", () => {
+      expect(mapTestimonialItem(review)).toEqual({
+        quote: "Absolutely wonderful service and the food was incredible.",
+        author: "Dana P.",
+        rating: 5,
+        linkConfig: {
+          label: "Read on Google",
+          href: "https://www.google.com/maps/contrib/123",
+        },
+      });
+    });
+
+    it("NEVER maps avatar_url (Phase 2 media caveat, §3.8)", () => {
+      const out = mapTestimonialItem(review) as Record<string, unknown>;
+      expect(out).not.toHaveProperty("avatarSrc");
+      expect(out).not.toHaveProperty("avatar_url");
+      expect(out).not.toHaveProperty("avatar");
+      expect(JSON.stringify(out)).not.toContain("googleusercontent");
+    });
+
+    it("omits rating when null (never fabricated)", () => {
+      const out = mapTestimonialItem({ ...review, rating: null });
+      expect(out).not.toHaveProperty("rating");
+    });
+
+    it("omits linkConfig when profile_url is absent (no synthesized link)", () => {
+      const out = mapTestimonialItem({ ...review, profile_url: null });
+      expect(out).not.toHaveProperty("linkConfig");
+    });
+
+    it("keeps a real zero-ish rating (1 is a number)", () => {
+      expect(mapTestimonialItem({ ...review, rating: 1 }).rating).toBe(1);
+    });
+  });
+
+  describe("mapReviewItem (ReviewItem coercion for list-verified / images-helpful)", () => {
+    it("renames quote→content, adds date and verified:true, passes numeric rating", () => {
+      const out = mapReviewItem(review);
+      expect(out).toMatchObject({
+        content: "Absolutely wonderful service and the food was incredible.",
+        rating: 5,
+        author: "Dana P.",
+        date: "Jul 1, 2026",
+        verified: true,
+      });
+      expect(out).not.toHaveProperty("quote");
+    });
+
+    it("derives a word-boundary title (~40 chars) with an ellipsis when truncated", () => {
+      const out = mapReviewItem(review);
+      // Cut window is 40 chars: "Absolutely wonderful service and the fo" → last space before "fo".
+      expect(out.title).toBe("Absolutely wonderful service and the…");
+      expect(out.title.endsWith("…")).toBe(true);
+      // Word boundary: never cuts mid-word.
+      expect(out.title).not.toContain("fo…");
+    });
+
+    it("uses the whole content as title when it is short (no ellipsis)", () => {
+      const out = mapReviewItem({ ...review, content: "Great spot!" });
+      expect(out.title).toBe("Great spot!");
+      expect(out.title.endsWith("…")).toBe(false);
+    });
+
+    it("collapses whitespace in the title", () => {
+      const out = mapReviewItem({ ...review, content: "Great\n\n  spot!" });
+      expect(out.title).toBe("Great spot!");
+    });
+
+    it("omits rating/date when absent, keeps verified:true", () => {
+      const out = mapReviewItem({ ...review, rating: null, time_created: "" });
+      expect(out).not.toHaveProperty("rating");
+      expect(out).not.toHaveProperty("date");
+      expect(out.verified).toBe(true);
+    });
+  });
+
+  describe("mapSocialTestimonialItem (twitter-cards coercion)", () => {
+    it("maps content (not quote) + author + linkConfig; never sets handle", () => {
+      const out = mapSocialTestimonialItem(review) as Record<string, unknown>;
+      expect(out.content).toBe(
+        "Absolutely wonderful service and the food was incredible."
+      );
+      expect(out.author).toBe("Dana P.");
+      expect(out.linkConfig).toEqual({
+        label: "Read on Google",
+        href: "https://www.google.com/maps/contrib/123",
+      });
+      expect(out).not.toHaveProperty("quote");
+      expect(out).not.toHaveProperty("handle");
+    });
+  });
+
+  describe("platformLabel", () => {
+    it("labels known enum keys", () => {
+      expect(platformLabel("google")).toBe("Google");
+      expect(platformLabel("yelp")).toBe("Yelp");
+      expect(platformLabel("applemaps")).toBe("Apple Maps");
+      expect(platformLabel("ubereats")).toBe("Uber Eats");
+      expect(platformLabel("bbb")).toBe("BBB");
+    });
+
+    it("capitalizes an unknown key rather than throwing", () => {
+      expect(platformLabel("someplace")).toBe("Someplace");
+    });
+
+    it("falls back generically for a blank platform (never 'Read on ')", () => {
+      expect(platformLabel("")).toBe("the review site");
+      expect(platformLabel(null)).toBe("the review site");
+    });
   });
 });
 

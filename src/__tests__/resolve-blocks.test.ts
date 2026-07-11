@@ -3,6 +3,7 @@ import {
   resolveBlocks,
   resolveBindTarget,
   DEFAULT_BIND_TARGETS,
+  SINGLE_BIND_TARGETS,
 } from "../data/resolve-blocks.js";
 import type {
   Block,
@@ -10,6 +11,7 @@ import type {
   BlogFeedDetailItem,
   FeedSourceResolver,
   InstagramFeedItem,
+  ReviewFeedItem,
 } from "../types/index.js";
 
 const BASE = "https://api.example.com";
@@ -357,6 +359,226 @@ describe("resolveBlocks — instagram_feed (§3.7 / §4.1b)", () => {
     expect(out._feedMeta?.status).toBe("error");
     expect(out._feedMeta?.reason).toBe("upstream_error");
     expect(out.blockProps?.items).toBeUndefined();
+  });
+});
+
+describe("resolveBindTarget — testimonials (§4.1c)", () => {
+  it("defaults array testimonials blocks to `testimonials`", () => {
+    expect(DEFAULT_BIND_TARGETS["testimonials-marquee"]).toBe("testimonials");
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-marquee",
+      dataSource: { type: "testimonials_feed" },
+    };
+    expect(resolveBindTarget(block)).toBe("testimonials");
+  });
+
+  it("defaults the `reviews`-prop blocks to `reviews`", () => {
+    for (const t of [
+      "testimonials-list-verified",
+      "testimonials-images-helpful",
+      "testimonials-grid-add-review",
+    ]) {
+      expect(DEFAULT_BIND_TARGETS[t]).toBe("reviews");
+      expect(
+        resolveBindTarget({ _id: "1", _type: t, dataSource: { type: "testimonials_feed" } })
+      ).toBe("reviews");
+    }
+  });
+
+  it("defaults the single-bind trio to `testimonial` via SINGLE_BIND_TARGETS", () => {
+    for (const t of [
+      "testimonials-company-logo",
+      "testimonials-large-quote",
+      "testimonials-split-image",
+    ]) {
+      expect(SINGLE_BIND_TARGETS[t]).toBe("testimonial");
+      expect(
+        resolveBindTarget({ _id: "1", _type: t, dataSource: { type: "testimonials_feed" } })
+      ).toBe("testimonial");
+    }
+  });
+
+  it("still honors an explicit bindTo override on a single-bind block", () => {
+    expect(
+      resolveBindTarget({
+        _id: "1",
+        _type: "testimonials-large-quote",
+        dataSource: { type: "testimonials_feed", bindTo: "custom" },
+      })
+    ).toBe("custom");
+  });
+});
+
+describe("resolveBlocks — testimonials_feed (§3.8 / §4.1c)", () => {
+  const reviewGoogle: ReviewFeedItem = {
+    id: "9c3b7a10-0000-4000-8000-000000000001",
+    reviewer_name: "Dana P.",
+    rating: 5,
+    content: "Absolutely wonderful — the tasting menu was a highlight of our trip.",
+    platform: "google",
+    time_created: "2026-07-01T09:00:00Z",
+    profile_url: "https://www.google.com/maps/contrib/123",
+    avatar_url: "https://lh3.googleusercontent.com/rot.jpg",
+  };
+  const reviewYelp: ReviewFeedItem = {
+    ...reviewGoogle,
+    id: "9c3b7a10-0000-4000-8000-000000000002",
+    reviewer_name: "Sam T.",
+    rating: 4,
+    content: "Solid brunch.",
+    platform: "yelp",
+    profile_url: null,
+  };
+
+  it("maps base TestimonialItem[] into the default `testimonials` target, retains dataSource, ok meta", async () => {
+    const fetcher = routeFetcher([
+      [
+        "/feeds/reviews",
+        {
+          data: [reviewGoogle, reviewYelp],
+          meta: { page: 1, per_page: 12, total_pages: 1, total_records: 2 },
+        },
+      ],
+    ]);
+    const block: Block = {
+      _id: "t1",
+      _type: "testimonials-marquee",
+      blockProps: { heading: "What guests say" },
+      dataSource: { type: "testimonials_feed", limit: 12 },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps?.heading).toBe("What guests say"); // authored prop untouched
+    const items = out.blockProps?.testimonials as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toEqual({
+      quote: "Absolutely wonderful — the tasting menu was a highlight of our trip.",
+      author: "Dana P.",
+      rating: 5,
+      linkConfig: { label: "Read on Google", href: "https://www.google.com/maps/contrib/123" },
+    });
+    // No avatar ever reaches the block (§3.8 media caveat).
+    expect(JSON.stringify(items)).not.toContain("googleusercontent");
+    // Yelp review with no profile_url → no linkConfig.
+    expect(items[1]).not.toHaveProperty("linkConfig");
+    expect(out.dataSource).toEqual(block.dataSource);
+    expect(out._feedMeta).toMatchObject({
+      status: "ok",
+      source: "testimonials_feed",
+      page: 1,
+      perPage: 12,
+      totalRecords: 2,
+    });
+  });
+
+  it("serializes limit/minRating/platforms[]/locationId into the request", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [reviewGoogle], meta: null });
+    }) as typeof fetch;
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-marquee",
+      dataSource: {
+        type: "testimonials_feed",
+        limit: 8,
+        minRating: 4,
+        platforms: ["google", "yelp"],
+        locationId: 1093,
+      },
+    };
+    await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("per_page")).toBe("8");
+    expect(query.get("min_rating")).toBe("4");
+    expect(query.getAll("platforms[]")).toEqual(["google", "yelp"]);
+    expect(query.get("location_id")).toBe("1093");
+  });
+
+  it("coerces to ReviewItem[] for testimonials-list-verified (content/title/date/verified)", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-list-verified",
+      dataSource: { type: "testimonials_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const reviews = out.blockProps?.reviews as Array<Record<string, unknown>>;
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({
+      content: "Absolutely wonderful — the tasting menu was a highlight of our trip.",
+      rating: 5,
+      author: "Dana P.",
+      date: "Jul 1, 2026",
+      verified: true,
+    });
+    expect(reviews[0].title).toBeTruthy();
+    expect(reviews[0]).not.toHaveProperty("quote");
+  });
+
+  it("coerces to SocialTestimonialItem[] for testimonials-twitter-cards (content, no handle)", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-twitter-cards",
+      dataSource: { type: "testimonials_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const items = out.blockProps?.testimonials as Array<Record<string, unknown>>;
+    expect(items[0]).toHaveProperty("content");
+    expect(items[0]).not.toHaveProperty("quote");
+    expect(items[0]).not.toHaveProperty("handle");
+  });
+
+  it("grid-add-review uses the base TestimonialItem shape under the `reviews` prop", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-grid-add-review",
+      dataSource: { type: "testimonials_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const reviews = out.blockProps?.reviews as Array<Record<string, unknown>>;
+    expect(reviews[0]).toHaveProperty("quote"); // base shape, not ReviewItem
+    expect(reviews[0]).not.toHaveProperty("title");
+    expect(reviews[0]).not.toHaveProperty("verified");
+  });
+
+  it("binds items[0] as a single OBJECT (not an array) for single-bind blocks", async () => {
+    const fetcher = routeFetcher([
+      ["/feeds/reviews", { data: [reviewGoogle, reviewYelp], meta: null }],
+    ]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-large-quote",
+      dataSource: { type: "testimonials_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const bound = out.blockProps?.testimonial;
+    expect(Array.isArray(bound)).toBe(false);
+    expect(bound).toMatchObject({ quote: reviewGoogle.content, author: "Dana P.", rating: 5 });
+    // Nothing bound under a plural target.
+    expect(out.blockProps?.testimonials).toBeUndefined();
+  });
+
+  it("empty feed -> status empty/no_reviews, nothing inlined", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [], meta: null }]]);
+    const block: Block = { _id: "1", _type: "testimonials-marquee", dataSource: { type: "testimonials_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("empty");
+    expect(out._feedMeta?.reason).toBe("no_reviews");
+    expect(out.blockProps?.testimonials).toBeUndefined();
+  });
+
+  it("fetch failure -> status error/upstream_error", async () => {
+    const fetcher = routeFetcher([], true);
+    const block: Block = { _id: "1", _type: "testimonials-marquee", dataSource: { type: "testimonials_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    expect(out._feedMeta?.status).toBe("error");
+    expect(out._feedMeta?.reason).toBe("upstream_error");
+    expect(out.blockProps?.testimonials).toBeUndefined();
   });
 });
 

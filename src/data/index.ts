@@ -14,14 +14,19 @@ export {
   resolveBlocks,
   resolveBindTarget,
   DEFAULT_BIND_TARGETS,
+  SINGLE_BIND_TARGETS,
   DEFAULT_BIND_TARGET,
 } from "./resolve-blocks.js";
 
-// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 / §4.1b hydrator tables).
+// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 / §4.1b / §4.1c hydrator tables).
 export {
   mapBlogFeedItem,
   mapBlogFeedDetail,
   mapInstagramFeedItem,
+  mapTestimonialItem,
+  mapReviewItem,
+  mapSocialTestimonialItem,
+  platformLabel,
   formatFeedDate,
 } from "./mappers.js";
 
@@ -49,6 +54,11 @@ export type {
   InstagramFeedItem,
   InstagramPostItem,
   InstagramFeedParams,
+  ReviewFeedItem,
+  ReviewFeedParams,
+  TestimonialItem,
+  ReviewItem,
+  SocialTestimonialItem,
   CreateFeedClientOptions,
   FeedClient,
   ResolveBlocksOptions,

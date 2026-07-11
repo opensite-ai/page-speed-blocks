@@ -10,12 +10,17 @@ import type {
   InstagramFeedParams,
   InstagramPostItem,
   ResolveBlocksOptions,
+  ReviewFeedItem,
+  ReviewFeedParams,
 } from "../types/index.js";
 import { createFeedClient } from "./feed-client.js";
 import {
   mapBlogFeedDetail,
   mapBlogFeedItem,
   mapInstagramFeedItem,
+  mapReviewItem,
+  mapSocialTestimonialItem,
+  mapTestimonialItem,
 } from "./mappers.js";
 
 /**
@@ -31,6 +36,40 @@ export const DEFAULT_BIND_TARGETS: Record<string, string> = {
   "carousel-gradient-text": "items",
   // Phase 3: Instagram gallery block (§4.1b — lockstep with dashtrack-ai + @opensite/ui).
   "instagram-post-grid": "items",
+  // Phase 2: testimonials blocks (§4.1c — lockstep with dashtrack-ai + @opensite/ui).
+  // Array blocks binding `TestimonialItem[]` (+ twitter-cards' SocialTestimonialItem[]) → `testimonials`.
+  "testimonials-centered-avatars": "testimonials",
+  "testimonials-marquee": "testimonials",
+  "testimonials-masonry-grid": "testimonials",
+  "testimonials-minimal-numbered": "testimonials",
+  "testimonials-quote-carousel": "testimonials",
+  "testimonials-simple-grid": "testimonials",
+  "testimonials-slider-minimal": "testimonials",
+  "testimonials-stats-header": "testimonials",
+  "testimonials-animated-split": "testimonials",
+  "testimonials-bento-grid": "testimonials",
+  "testimonials-carousel-image": "testimonials",
+  "testimonials-logo-cards": "testimonials",
+  "testimonials-mini-dividers": "testimonials",
+  "testimonials-parallax-number": "testimonials",
+  "testimonials-scrolling-columns": "testimonials",
+  "testimonials-wall-compact": "testimonials",
+  "testimonials-twitter-cards": "testimonials",
+  // Blocks whose array prop is named `reviews` (§4.1c).
+  "testimonials-list-verified": "reviews",
+  "testimonials-images-helpful": "reviews",
+  "testimonials-grid-add-review": "reviews",
+};
+
+/**
+ * Blocks that bind a SINGLE item OBJECT (not an array) to their target prop (FEED_CONTRACT
+ * §4.1c). Generic — any source's resolver may consult this map to bind `items[0]` as an object.
+ * Phase 2 uses it for the single-quote testimonials trio (prop `testimonial`).
+ */
+export const SINGLE_BIND_TARGETS: Record<string, string> = {
+  "testimonials-company-logo": "testimonial",
+  "testimonials-large-quote": "testimonial",
+  "testimonials-split-image": "testimonial",
 };
 
 /** Final fallback bind target (FEED_CONTRACT §2.3 rule 6). */
@@ -45,12 +84,18 @@ const GALLERY_BLOCK_TYPES = new Set([
 ]);
 
 /**
- * Resolve the bind target for a block: explicit `bindTo` → per-block default → `"posts"`.
+ * Resolve the bind target for a block: explicit `bindTo` → single-bind default → per-block
+ * array default → `"posts"`. (Single-bind and array-bind block types are disjoint, so the
+ * ordering of the two default maps only matters for clarity.)
  */
 export function resolveBindTarget(block: Block): string {
   const explicit = block.dataSource?.bindTo;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  return DEFAULT_BIND_TARGETS[block._type] ?? DEFAULT_BIND_TARGET;
+  return (
+    SINGLE_BIND_TARGETS[block._type] ??
+    DEFAULT_BIND_TARGETS[block._type] ??
+    DEFAULT_BIND_TARGET
+  );
 }
 
 function nowIso(): string {
@@ -220,6 +265,104 @@ const resolveInstagramFeed: FeedSourceResolver = async ({
   return [withFeedMeta({ ...block, blockProps }, okMeta("instagram_feed", response.meta))];
 };
 
+/** Map a symbolic `testimonials_feed` `dataSource` to `FeedClient` review list params (§3.8). */
+function dataSourceToReviewParams(source: DataSource): ReviewFeedParams {
+  const params: ReviewFeedParams = {};
+  if (typeof source.limit === "number") params.perPage = source.limit;
+  if (typeof source.minRating === "number") params.minRating = source.minRating;
+  if (Array.isArray(source.platforms)) {
+    params.platforms = source.platforms.filter(
+      (platform): platform is string => typeof platform === "string"
+    );
+  }
+  if (typeof source.locationId === "number" || typeof source.locationId === "string") {
+    params.locationId = source.locationId;
+  }
+  return params;
+}
+
+/** Blocks whose `reviews` prop expects the `ReviewItem` shape (§4.1c). */
+const REVIEW_ITEM_BLOCK_TYPES = new Set([
+  "testimonials-list-verified",
+  "testimonials-images-helpful",
+]);
+
+/** Blocks whose prop expects the `SocialTestimonialItem` shape (§4.1c). */
+const SOCIAL_TESTIMONIAL_BLOCK_TYPES = new Set(["testimonials-twitter-cards"]);
+
+/**
+ * Inline resolved review items into the bind target, choosing the per-block item shape (§4.1c):
+ * `ReviewItem` for list-verified/images-helpful, `SocialTestimonialItem` for twitter-cards, and
+ * the base `TestimonialItem` for everything else. Single-bind blocks (§4.1c) receive `items[0]`
+ * as a single OBJECT rather than an array. Only the bind target is written — every other
+ * authored prop is untouched (§2.3 rule 2).
+ */
+function inlineTestimonialItems(
+  block: Block,
+  bindTarget: string,
+  wireItems: ReviewFeedItem[]
+): Block {
+  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+
+  // Single-bind: bind the first item as a single OBJECT (base TestimonialItem), never an array.
+  if (block._type in SINGLE_BIND_TARGETS) {
+    blockProps[bindTarget] = mapTestimonialItem(wireItems[0]);
+    return { ...block, blockProps };
+  }
+
+  let items: unknown[];
+  if (REVIEW_ITEM_BLOCK_TYPES.has(block._type)) {
+    items = wireItems.map(mapReviewItem);
+  } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(block._type)) {
+    items = wireItems.map(mapSocialTestimonialItem);
+  } else {
+    items = wireItems.map(mapTestimonialItem);
+  }
+
+  blockProps[bindTarget] = items;
+  return { ...block, blockProps };
+}
+
+/**
+ * Built-in `testimonials_feed` resolver (FEED_CONTRACT §3.8 / §4.1c). Fetches the reviews list,
+ * coerces to the per-block item shape, inlines into the bind target (array, or a single object
+ * for the single-bind trio), and attaches `_feedMeta`. Empty (`no_reviews`) and error
+ * (`upstream_error`) states are distinct (§2.3 rule 5), mirroring the blog / instagram siblings.
+ */
+const resolveReviewsFeed: FeedSourceResolver = async ({
+  block,
+  dataSource,
+  client,
+  bindTarget,
+}) => {
+  const response = await client.listReviews(dataSourceToReviewParams(dataSource));
+
+  if (response.error) {
+    return [
+      withFeedMeta(block, {
+        status: "error",
+        reason: "upstream_error",
+        source: "testimonials_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  if (response.data.length === 0) {
+    return [
+      withFeedMeta(block, {
+        status: "empty",
+        reason: "no_reviews",
+        source: "testimonials_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  const inlined = inlineTestimonialItems(block, bindTarget, response.data);
+  return [withFeedMeta(inlined, okMeta("testimonials_feed", response.meta))];
+};
+
 /** Extract a slug from the last non-empty path segment. */
 function lastPathSegment(path?: string): string | undefined {
   if (!path) return undefined;
@@ -313,11 +456,12 @@ const resolveBlogPost: FeedSourceResolver = async ({
   ];
 };
 
-/** Built-in resolvers keyed by source type. Phase 1: blog; Phase 3: instagram. */
+/** Built-in resolvers keyed by source type. Phase 1: blog; Phase 2: reviews; Phase 3: instagram. */
 const BUILT_IN_SOURCES: Record<string, FeedSourceResolver> = {
   blog_feed: resolveBlogFeed,
   blog_post: resolveBlogPost,
   instagram_feed: resolveInstagramFeed,
+  testimonials_feed: resolveReviewsFeed,
 };
 
 /**
