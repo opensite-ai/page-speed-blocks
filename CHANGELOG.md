@@ -37,9 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `testimonial`). `resolveBindTarget` consults it ahead of the array-default map.
 - New feed types in `src/types/index.ts`: `ReviewFeedItem`, `ReviewFeedParams`, `TestimonialItem`,
   `ReviewItem`, `SocialTestimonialItem`; `DataSource` gains optional `minRating` / `platforms` /
-  `locationId`; `FeedClient` gains `listReviews`. No `@opensite/ui` dependency bump — these are
-  local string-typed wire/prop shapes (assignable to the block's `React.ReactNode` props),
-  matching the Phase 3 convention.
+  `locationId`; `FeedClient` gains `listReviews`. These are local string-typed wire/prop shapes
+  (assignable to the block's `React.ReactNode` props), matching the Phase 3 convention — the code
+  does not depend on new `@opensite/ui` APIs.
+
+### Changed
+- `@opensite/ui` **3.12.1 → 3.13.0** (exact pin). Not required by the code above, but the pin is
+  what consumers resolve through — 3.13.0 carries the testimonials StarRating fixes
+  (per-item real ratings on `testimonials-grid-add-review` / `testimonials-stats-header`) and the
+  `testimonials_feed` contract notes, so blocks must not strand downstream installs at 3.12.1.
 
 ### Security
 - The data layer never maps review avatars or `review_photos`: `avatar_url` ships on the wire for
