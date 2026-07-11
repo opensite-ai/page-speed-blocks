@@ -9,6 +9,7 @@ import type {
   Block,
   BlogFeedItem,
   BlogFeedDetailItem,
+  EventFeedItem,
   FeedSourceResolver,
   InstagramFeedItem,
   ReviewFeedItem,
@@ -727,5 +728,225 @@ describe("resolveBlocks — one-to-many expansion (D6)", () => {
     // 1 static + 3 expanded = 4
     expect(out).toHaveLength(4);
     expect(out.map((b) => b._id)).toEqual(["keep", "evt-1", "evt-2", "evt-3"]);
+  });
+});
+
+describe("resolveBlocks — events_feed expansion (§3.9 / §4.1d, D6, built-in resolver)", () => {
+  const baseEvent: EventFeedItem = {
+    id: "123",
+    occurrence_id: "123:0",
+    title: "Summer Kickoff Party",
+    description: "Join us for food, drinks, and live music.",
+    starts_at: "2026-07-18T19:00:00-07:00",
+    ends_at: "2026-07-18T22:00:00-07:00",
+    timezone: "America/Phoenix",
+    location_name: "The Rooftop",
+    custom_address: null,
+    image_url: "https://cdn.ing/events/1.jpg",
+    registration_url: "https://tickets.example.com/123",
+    booking_behavior: "external",
+    price_from: "25.00",
+    recurring_summary: null,
+  };
+
+  // Two occurrences of event 123 + one of event 456 → three distinct heroes.
+  const occurrences: EventFeedItem[] = [
+    { ...baseEvent, id: "123", occurrence_id: "123:0" },
+    { ...baseEvent, id: "123", occurrence_id: "123:1", starts_at: "2026-07-25T19:00:00-07:00" },
+    { ...baseEvent, id: "456", occurrence_id: "456:0", title: "Autumn Gala" },
+  ];
+
+  const eventsFetcher = (data: EventFeedItem[], meta: unknown = null) =>
+    routeFetcher([["/feeds/events", { data, meta }]]);
+
+  const symbolicBlock = (overrides: Partial<Block> = {}): Block => ({
+    _id: "slot_events",
+    _type: "hero-event-registration",
+    _parent: "section_1",
+    blockProps: { heading: "Upcoming Events" }, // authored placeholder — must NOT survive
+    dataSource: { type: "events_feed", limit: 6 },
+    ...overrides,
+  });
+
+  it("expands ONE symbolic block into N hero-event-registration instances", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out).toHaveLength(3);
+    for (const b of out) expect(b._type).toBe("hero-event-registration");
+  });
+
+  it("mints unique, deterministic _ids (<source>__ev_<event>_<occurrence>) and inherits _parent", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out.map((b) => b._id)).toEqual([
+      "slot_events__ev_123_0",
+      "slot_events__ev_123_1",
+      "slot_events__ev_456_0",
+    ]);
+    // Uniqueness (duplicate _id = React key collision + wrong child lookups).
+    expect(new Set(out.map((b) => b._id)).size).toBe(out.length);
+    // _parent inherited from the symbolic block so heroes render as siblings in its slot.
+    for (const b of out) expect(b._parent).toBe("section_1");
+  });
+
+  it("carries ok _feedMeta with expandedFrom on every expanded block", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    for (const b of out) {
+      expect(b._feedMeta).toMatchObject({
+        status: "ok",
+        source: "events_feed",
+        expandedFrom: "slot_events",
+      });
+      expect(b._feedMeta?.resolvedAt).toBeTruthy();
+    }
+  });
+
+  it("uses the mapped occurrence props (NOT the authored placeholder) and DROPS dataSource", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    // Authored heading "Upcoming Events" is replaced by the event title.
+    expect(out[0].blockProps?.heading).toBe("Summer Kickoff Party");
+    expect(out[2].blockProps?.heading).toBe("Autumn Gala");
+    expect(out[0].blockProps).toMatchObject({
+      badgeText: "JUL 18",
+      locationLabel: "Jul 18, 2026 · 7:00 PM",
+      locationSublabel: "The Rooftop",
+      image: { src: "https://cdn.ing/events/1.jpg", alt: "Summer Kickoff Party" },
+      stats: [{ value: "$25.00", label: "From" }],
+      actions: [{ label: "Register", href: "https://tickets.example.com/123" }],
+    });
+    // dataSource dropped so a re-resolve never re-expands the hero.
+    for (const b of out) expect(b.dataSource).toBeUndefined();
+  });
+
+  it("places expanded heroes contiguously in the source's slot, siblings preserved", async () => {
+    const input: Block[] = [
+      { _id: "hdr", _type: "Box", content: "header" },
+      symbolicBlock(),
+      { _id: "ftr", _type: "Box", content: "footer" },
+    ];
+    const out = await resolveBlocks(input, {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out.map((b) => b._id)).toEqual([
+      "hdr",
+      "slot_events__ev_123_0",
+      "slot_events__ev_123_1",
+      "slot_events__ev_456_0",
+      "ftr",
+    ]);
+  });
+
+  it("EMPTY (no occurrences) → the ORIGINAL symbolic block stays UNEXPANDED with empty meta", async () => {
+    const block = symbolicBlock();
+    const out = await resolveBlocks([block], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher([]),
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]._id).toBe("slot_events"); // not expanded
+    expect(out[0]._feedMeta).toMatchObject({
+      status: "empty",
+      reason: "no_upcoming_events",
+      source: "events_feed",
+    });
+    // dataSource retained on the unexpanded block (so the empty renderer / re-query works).
+    expect(out[0].dataSource).toEqual(block.dataSource);
+    // Authored props untouched on the empty path.
+    expect(out[0].blockProps?.heading).toBe("Upcoming Events");
+  });
+
+  it("ERROR (fetch failure) → the ORIGINAL block stays UNEXPANDED with error meta", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: routeFetcher([], true),
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]._id).toBe("slot_events");
+    expect(out[0]._feedMeta).toMatchObject({
+      status: "error",
+      reason: "upstream_error",
+      source: "events_feed",
+    });
+  });
+
+  it("caps the render count at the limit default (6) even if the server returns more", async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      ...baseEvent,
+      id: String(i),
+      occurrence_id: `${i}:0`,
+    }));
+    const out = await resolveBlocks(
+      [symbolicBlock({ dataSource: { type: "events_feed" } })], // no explicit limit
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(many) }
+    );
+    expect(out).toHaveLength(6);
+  });
+
+  it("hard-caps the render count at 12 even when limit is larger", async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      ...baseEvent,
+      id: String(i),
+      occurrence_id: `${i}:0`,
+    }));
+    const out = await resolveBlocks(
+      [symbolicBlock({ dataSource: { type: "events_feed", limit: 20 } })],
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(many) }
+    );
+    expect(out).toHaveLength(12);
+  });
+
+  it("sends per_page (render limit) + start_date/end_date/location_ids[] from the dataSource", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [baseEvent], meta: null });
+    }) as typeof fetch;
+    const block = symbolicBlock({
+      dataSource: {
+        type: "events_feed",
+        limit: 4,
+        startDate: "2026-07-18",
+        endDate: "2026-08-18",
+        locationIds: [1093, 1094],
+      },
+    });
+    await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("per_page")).toBe("4"); // per_page = render limit
+    expect(query.get("start_date")).toBe("2026-07-18");
+    expect(query.get("end_date")).toBe("2026-08-18");
+    expect(query.getAll("location_ids[]")).toEqual(["1093", "1094"]);
+  });
+
+  it("defaults per_page to the limit default (6) when the dataSource sets no limit", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [baseEvent], meta: null });
+    }) as typeof fetch;
+    await resolveBlocks([symbolicBlock({ dataSource: { type: "events_feed" } })], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher,
+    });
+    expect(new URL(calls[0]).searchParams.get("per_page")).toBe("6");
   });
 });

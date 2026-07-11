@@ -3,6 +3,8 @@ import type {
   BlogFeedParams,
   BlogPostItem,
   DataSource,
+  EventFeedItem,
+  EventFeedParams,
   FeedMeta,
   FeedResponseMeta,
   FeedSourceContext,
@@ -18,6 +20,7 @@ import { createFeedClient } from "./feed-client.js";
 import {
   mapBlogFeedDetail,
   mapBlogFeedItem,
+  mapEventFeedItem,
   mapInstagramFeedItem,
   mapReviewItem,
   mapSocialTestimonialItem,
@@ -392,6 +395,138 @@ const resolveReviewsFeed: FeedSourceResolver = async ({
   return [withFeedMeta(inlined, okMeta("testimonials_feed", response.meta))];
 };
 
+// ---------------------------------------------------------------------------
+// Events feed (FEED_CONTRACT §3.9 / §4.1d, D6) — the FIRST expanding source: ONE symbolic block
+// hydrates into N `hero-event-registration` block instances (one per occurrence). Keep the
+// expansion mechanics, `_id` scheme, and `_feedMeta` contract in lockstep with the dashtrack-ai
+// `Feeds::Hydrator` events expansion.
+// ---------------------------------------------------------------------------
+
+/** The block type every expanded event occurrence is minted as (§4.1d). */
+const HERO_EVENT_BLOCK_TYPE = "hero-event-registration";
+/** Default number of event heroes to render when `dataSource.limit` is unset (§4.1d). */
+const EVENT_LIMIT_DEFAULT = 6;
+/** Hard cap on rendered event heroes — N-hero pages are visually heavy (§4.1d). */
+const EVENT_LIMIT_MAX = 12;
+
+/**
+ * Resolve the number of event heroes to render: `dataSource.limit` when a positive number, else
+ * the default (6); always capped at 12 (§4.1d). This doubles as the fetch `per_page` so we never
+ * pull occurrences we won't render.
+ */
+function eventLimit(source: DataSource): number {
+  const raw = typeof source.limit === "number" ? Math.trunc(source.limit) : NaN;
+  const base = Number.isFinite(raw) && raw > 0 ? raw : EVENT_LIMIT_DEFAULT;
+  return Math.min(base, EVENT_LIMIT_MAX);
+}
+
+/**
+ * Map a symbolic `events_feed` `dataSource` to `FeedClient` event list params (§3.9). `per_page`
+ * is set to the render limit (default 6, hard cap 12) so the request and the expansion align.
+ * `upcomingOnly` has no §3.9 wire param (the server's default window starts at "now"), so it is
+ * intentionally not forwarded here.
+ */
+function dataSourceToEventParams(source: DataSource): EventFeedParams {
+  const params: EventFeedParams = { perPage: eventLimit(source) };
+  if (typeof source.startDate === "string") params.startDate = source.startDate;
+  if (typeof source.endDate === "string") params.endDate = source.endDate;
+  if (Array.isArray(source.locationIds)) {
+    params.locationIds = source.locationIds.filter(
+      (id): id is number | string =>
+        typeof id === "number" || typeof id === "string"
+    );
+  }
+  return params;
+}
+
+/**
+ * Mint the unique `_id` for an expanded event block (§4.1d):
+ * `"<symbolic_id>__ev_<event_id>_<occurrence_index>"`. The occurrence index is parsed from the
+ * wire `occurrence_id` (`"<event_id>:<index>"`); if it is malformed (no `:`), the array position
+ * is used as a deterministic fallback so the `_id` is always globally unique (duplicate `_id`s
+ * corrupt React keys and child lookups — the primary expansion failure mode).
+ */
+function expandedEventId(sourceId: string, item: EventFeedItem, position: number): string {
+  const occurrenceId = item.occurrence_id ?? "";
+  const colon = occurrenceId.lastIndexOf(":");
+  const index = colon >= 0 ? occurrenceId.slice(colon + 1) : String(position);
+  return `${sourceId}__ev_${item.id}_${index}`;
+}
+
+/**
+ * Mint one `hero-event-registration` block from an event occurrence. Block-level presentation
+ * (styles, tag, `_name`) is inherited from the symbolic block; `_parent` is inherited so the
+ * heroes render as siblings in the source's slot (or as roots if the source was a root).
+ *
+ * The `dataSource` is DELIBERATELY DROPPED: the expanded heroes are concrete blocks, not symbolic
+ * sources, and re-running `resolveBlocks` must not re-expand them. `blockProps` are the fresh
+ * mapped occurrence props (§4.1d) — NOT merged with the symbolic block's authored props: for an
+ * expanding source there is no single bind target, and each hero must show ONLY real occurrence
+ * data with absent regions collapsing (contract "omit absent"), so `bindTarget` is ignored.
+ */
+function mintEventBlock(sourceBlock: Block, item: EventFeedItem, position: number): Block {
+  const {
+    dataSource: _omitDataSource,
+    blockProps: _omitBlockProps,
+    _feedMeta: _omitFeedMeta,
+    ...rest
+  } = sourceBlock;
+  const blockProps: Record<string, unknown> = { ...mapEventFeedItem(item) };
+  const eventBlock: Block = {
+    ...rest,
+    _id: expandedEventId(sourceBlock._id, item, position),
+    _type: HERO_EVENT_BLOCK_TYPE,
+    _parent: sourceBlock._parent ?? null,
+    blockProps,
+  };
+  return withFeedMeta(eventBlock, {
+    status: "ok",
+    source: "events_feed",
+    expandedFrom: sourceBlock._id,
+    resolvedAt: nowIso(),
+  });
+}
+
+/**
+ * Built-in `events_feed` resolver (FEED_CONTRACT §3.9 / §4.1d, D6). Fetches the occurrence list
+ * and EXPANDS into N `hero-event-registration` blocks (`limit` default 6, hard cap 12), each
+ * carrying `{status:'ok', source:'events_feed', expandedFrom:<symbolic_id>}` meta. On empty
+ * (`no_upcoming_events`) or error (`upstream_error`) the ORIGINAL symbolic block stays in place
+ * UNEXPANDED with the usual `_feedMeta`, so the empty / error renderers work unchanged (§2.3
+ * rule 5 — empty / error are first-class and there is no wrapper-block concept).
+ */
+const resolveEventsFeed: FeedSourceResolver = async ({ block, dataSource, client }) => {
+  const response = await client.listEvents(dataSourceToEventParams(dataSource));
+
+  if (response.error) {
+    return [
+      withFeedMeta(block, {
+        status: "error",
+        reason: "upstream_error",
+        source: "events_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  // Cap the rendered occurrences (the server already limits via per_page; this is the belt-and-
+  // suspenders render cap — default 6, hard cap 12).
+  const occurrences = response.data.slice(0, eventLimit(dataSource));
+
+  if (occurrences.length === 0) {
+    return [
+      withFeedMeta(block, {
+        status: "empty",
+        reason: "no_upcoming_events",
+        source: "events_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  return occurrences.map((item, index) => mintEventBlock(block, item, index));
+};
+
 /** Extract a slug from the last non-empty path segment. */
 function lastPathSegment(path?: string): string | undefined {
   if (!path) return undefined;
@@ -485,12 +620,16 @@ const resolveBlogPost: FeedSourceResolver = async ({
   ];
 };
 
-/** Built-in resolvers keyed by source type. Phase 1: blog; Phase 2: reviews; Phase 3: instagram. */
+/**
+ * Built-in resolvers keyed by source type. Phase 1: blog; Phase 2: reviews; Phase 3: instagram;
+ * Phase 4: events (the first EXPANDING source — one block → N `hero-event-registration` blocks).
+ */
 const BUILT_IN_SOURCES: Record<string, FeedSourceResolver> = {
   blog_feed: resolveBlogFeed,
   blog_post: resolveBlogPost,
   instagram_feed: resolveInstagramFeed,
   testimonials_feed: resolveReviewsFeed,
+  events_feed: resolveEventsFeed,
 };
 
 /**

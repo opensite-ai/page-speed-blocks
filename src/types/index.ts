@@ -63,8 +63,10 @@ export interface Block {
 
 /**
  * Symbolic dynamic data source (FEED_CONTRACT §2.1 / §2.2).
- * All five source types ship as contract types; `blog_feed` / `blog_post` (Phase 1) and
- * `instagram_feed` (Phase 3) are implemented, `testimonials_feed` / `events_feed` are types-only.
+ * All five source types are implemented: `blog_feed` / `blog_post` (Phase 1),
+ * `testimonials_feed` (Phase 2), `instagram_feed` (Phase 3), and `events_feed` (Phase 4).
+ * `events_feed` is the first EXPANDING source (`expands: true`) — one symbolic block hydrates
+ * into N `hero-event-registration` block instances (§4.1d / D6).
  */
 export interface DataSource {
   /** Source type — maps to a resolver in `resolveBlocks`. */
@@ -101,6 +103,25 @@ export interface DataSource {
   platforms?: string[];
   /** `testimonials_feed` location filter — must be a member of the website's locations (§3.8). */
   locationId?: number | string;
+  /**
+   * `events_feed` window start — ISO-8601 date/datetime (§3.9). Absent → the server defaults
+   * to now (occurrences are expanded within a mandatory bounded window, default now → +90d).
+   */
+  startDate?: string;
+  /** `events_feed` window end — ISO-8601 (§3.9). Absent → server default +90d, capped at +366d. */
+  endDate?: string;
+  /**
+   * `events_feed` location filter — repeated `location_ids[]` (§3.9). Each id must be a member
+   * of the website's assigned locations (unknown/foreign id → empty result, never unfiltered).
+   */
+  locationIds?: (number | string)[];
+  /**
+   * `events_feed` upcoming-only hint (§2.2 optionalFields). The server's default window already
+   * starts at "now" (i.e. upcoming-only by construction), so there is NO wire param for this on
+   * the §3.9 endpoint; it is a symbolic hint the build-time hydrator may honor. The client mirror
+   * does not serialize it (see `dataSourceToEventParams`).
+   */
+  upcomingOnly?: boolean;
   /** Override the bind target prop (else per-block default, else `"posts"`). */
   bindTo?: string;
   /** Sources are intentionally open (future filters). */
@@ -124,6 +145,12 @@ export interface FeedMeta {
   perPage?: number;
   totalPages?: number;
   totalRecords?: number;
+  /**
+   * For blocks minted by an expanding source (`expands: true`, FEED_CONTRACT §4.1d / D6):
+   * the `_id` of the symbolic block this expanded block was hydrated from. Set on every
+   * `hero-event-registration` instance produced by the `events_feed` resolver.
+   */
+  expandedFrom?: string;
 }
 
 /**
@@ -418,6 +445,105 @@ export interface ReviewFeedParams {
 }
 
 /**
+ * Events feed list item — the wire shape (FEED_CONTRACT §3.9, snake_case, FLAT).
+ * Produced by `PublicFeeds::EventSerializer` on toastability-service. The feed returns
+ * OCCURRENCES (not raw events): recurrence is expanded server-side within a bounded window and
+ * RRULE internals NEVER ship. The field list is locked — nothing beyond these is on the wire
+ * (FORBIDDEN: head counts, job fields, nested org/location objects, package/recurrence internals).
+ */
+export interface EventFeedItem {
+  /** Event id, string-coerced. */
+  id: string;
+  /** Event id + occurrence index within the window, e.g. `"123:2"` (§3.9). */
+  occurrence_id: string;
+  title: string;
+  /** Plain text. */
+  description: string;
+  /** ISO-8601 WITH offset (tz-naive columns + `timezone` applied). */
+  starts_at: string;
+  /** ISO-8601 WITH offset; null when the event has no end. */
+  ends_at: string | null;
+  /** IANA timezone, e.g. `"America/Phoenix"`. */
+  timezone: string;
+  location_name: string | null;
+  custom_address: string | null;
+  /** MediaRecord CDN URL ONLY (§3.7 re-hosting rule); null when none. */
+  image_url: string | null;
+  /** Only present when `use_external_booking_site`; null otherwise. */
+  registration_url: string | null;
+  booking_behavior: string;
+  /** MIN over `event_packages`, only when packages exist; null otherwise. Decimal string. */
+  price_from: string | null;
+  /** Server-built human string, e.g. `"Weekly on Fridays"`; null for single events. */
+  recurring_summary: string | null;
+}
+
+/**
+ * A single stat chip on an expanded event hero (FEED_CONTRACT §4.1d). REAL data only — the
+ * `stats` array is omitted entirely when no real stat exists (never fabricated / zero-filled).
+ */
+export interface EventHeroStat {
+  value: string;
+  label: string;
+}
+
+/** A single CTA on an expanded event hero (FEED_CONTRACT §4.1d). */
+export interface EventHeroAction {
+  label: string;
+  href: string;
+}
+
+/** The image slot on an expanded event hero (FEED_CONTRACT §4.1d); present only when real. */
+export interface EventHeroImage {
+  src: string;
+  alt: string;
+}
+
+/**
+ * `hero-event-registration` blockProps produced by mapping ONE event occurrence
+ * (FEED_CONTRACT §4.1d). Declared locally as a string-typed prop shape (assignable to the
+ * block's `React.ReactNode` text regions), mirroring `InstagramPostItem` / `TestimonialItem` —
+ * requires no `@opensite/ui` dependency. Every optional region is OMITTED when the occurrence
+ * has no real value for it (the block null-guards each region; §4.1d "omit absent"). Constraint
+ * caps are enforced by the mapper: `actions ≤ 2`, `stats ≤ 4`.
+ */
+export interface EventHeroProps {
+  /** From `title` — truncated ≤ 50 codepoints at a word boundary (§4.1d). */
+  heading: string;
+  /** From `description` — truncated ≤ 130 codepoints; omitted when blank. */
+  description?: string;
+  /** Short date badge from `starts_at` in the event tz, e.g. `"JUL 18"`. */
+  badgeText?: string;
+  /** Formatted occurrence datetime `"%b %-d, %Y · %-l:%M %p"` in the event tz. */
+  locationLabel?: string;
+  /** `location_name` or `custom_address` (whichever is real); omitted when neither. */
+  locationSublabel?: string;
+  /** `{ src, alt: title }` only when `image_url` is present. */
+  image?: EventHeroImage;
+  /** REAL stats only (`price_from` → "From"; `recurring_summary` → "Schedule"); omitted when none. */
+  stats?: EventHeroStat[];
+  /** `[{ label: "Register", href }]` only when `registration_url` is present; omitted otherwise. */
+  actions?: EventHeroAction[];
+}
+
+/**
+ * Normalized `FeedClient` events list params (FEED_CONTRACT §3.9). `perPage` is clamped ≤ 50
+ * client-side; `locationIds` serializes as repeated `location_ids[]` params; every provided
+ * filter is resent on every call.
+ */
+export interface EventFeedParams {
+  page?: number;
+  /** Clamped to ≤ 50 client-side (events additionally cap the render count at 12 — §4.1d). */
+  perPage?: number;
+  /** Maps to `start_date` (ISO-8601). */
+  startDate?: string;
+  /** Maps to `end_date` (ISO-8601). */
+  endDate?: string;
+  /** `websites.website_location_assignments` ids; serialized as repeated `location_ids[]`. */
+  locationIds?: (number | string)[];
+}
+
+/**
  * Normalized `FeedClient` list params. The client is the single place that builds feed URLs
  * (FEED_CONTRACT §7.2) and serializes every provided filter on every call.
  */
@@ -457,6 +583,9 @@ export interface FeedClient {
   listReviews(
     params?: ReviewFeedParams
   ): Promise<FeedListResponse<ReviewFeedItem>>;
+  listEvents(
+    params?: EventFeedParams
+  ): Promise<FeedListResponse<EventFeedItem>>;
 }
 
 /** Options for {@link resolveBlocks} (FEED_CONTRACT §7.1). */

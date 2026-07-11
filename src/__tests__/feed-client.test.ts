@@ -298,3 +298,85 @@ describe("createFeedClient — listReviews URL building (§3.8)", () => {
     expect(result.error?.status).toBe(500);
   });
 });
+
+describe("createFeedClient — listEvents URL building (§3.9)", () => {
+  it("scopes to /feeds/events with no query when params are empty", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listEvents();
+    expect(calls[0]).toBe(
+      "https://api.example.com/public_services/websites/site-token-123/feeds/events"
+    );
+  });
+
+  it("serializes page, per_page, start_date, and end_date", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listEvents({
+      page: 2,
+      perPage: 24,
+      startDate: "2026-07-18",
+      endDate: "2026-08-18",
+    });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("page")).toBe("2");
+    expect(query.get("per_page")).toBe("24");
+    expect(query.get("start_date")).toBe("2026-07-18");
+    expect(query.get("end_date")).toBe("2026-08-18");
+  });
+
+  it("serializes location_ids as REPEATED location_ids[] params (Rack array binding)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listEvents({ locationIds: [1093, "1094", 1095] });
+    // The bracket key is percent-encoded, repeated once per id.
+    expect(calls[0]).toContain("location_ids%5B%5D=1093");
+    expect(calls[0]).toContain("location_ids%5B%5D=1094");
+    expect(calls[0]).toContain("location_ids%5B%5D=1095");
+    const query = new URL(calls[0]).searchParams;
+    expect(query.getAll("location_ids[]")).toEqual(["1093", "1094", "1095"]);
+  });
+
+  it("drops empty/blank location id entries but keeps valid ones (incl. 0)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listEvents({ locationIds: ["", 0, "1094"] });
+    expect(new URL(calls[0]).searchParams.getAll("location_ids[]")).toEqual(["0", "1094"]);
+  });
+
+  it("clamps per_page to MAX_PER_PAGE", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    await client.listEvents({ perPage: 500 });
+    expect(new URL(calls[0]).searchParams.get("per_page")).toBe(String(MAX_PER_PAGE));
+  });
+
+  it("re-sends every filter on every page request (legacy bug #1)", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const filters = {
+      startDate: "2026-07-18",
+      endDate: "2026-08-18",
+      locationIds: [1093, 1094],
+    };
+    await client.listEvents({ ...filters, page: 1 });
+    await client.listEvents({ ...filters, page: 2 });
+    for (const url of calls) {
+      const query = new URL(url).searchParams;
+      expect(query.get("start_date")).toBe("2026-07-18");
+      expect(query.get("end_date")).toBe("2026-08-18");
+      expect(query.getAll("location_ids[]")).toEqual(["1093", "1094"]);
+    }
+    expect(new URL(calls[0]).searchParams.get("page")).toBe("1");
+    expect(new URL(calls[1]).searchParams.get("page")).toBe("2");
+  });
+
+  it("returns an error envelope on non-2xx (never throws)", async () => {
+    const { fetcher } = recordingFetcher({}, { ok: false, status: 500 });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const result = await client.listEvents();
+    expect(result.data).toEqual([]);
+    expect(result.meta).toBeNull();
+    expect(result.error?.status).toBe(500);
+  });
+});

@@ -2,16 +2,19 @@ import { describe, it, expect } from "vitest";
 import {
   mapBlogFeedDetail,
   mapBlogFeedItem,
+  mapEventFeedItem,
   mapInstagramFeedItem,
   mapReviewItem,
   mapSocialTestimonialItem,
   mapTestimonialItem,
   platformLabel,
   formatFeedDate,
+  truncateAtWordBoundary,
 } from "../data/mappers.js";
 import type {
   BlogFeedDetailItem,
   BlogFeedItem,
+  EventFeedItem,
   InstagramFeedItem,
   ReviewFeedItem,
 } from "../types/index.js";
@@ -381,5 +384,210 @@ describe("formatFeedDate (§4.1)", () => {
     expect(formatFeedDate(null)).toBeUndefined();
     expect(formatFeedDate(undefined)).toBeUndefined();
     expect(formatFeedDate("not-a-date")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Events feed mapper (§3.9 / §4.1d)
+// ---------------------------------------------------------------------------
+
+describe("truncateAtWordBoundary (§4.1c / §4.1d shared rule)", () => {
+  // Ten 5-char words joined by single spaces → 59 codepoints. Cutting to 50 lands inside the
+  // 9th word ("II"); the word-boundary cut backs up to the last ASCII space → first 8 words.
+  const WORDS = [
+    "AAAAA", "BBBBB", "CCCCC", "DDDDD", "EEEEE",
+    "FFFFF", "GGGGG", "HHHHH", "IIIII", "JJJJJ",
+  ];
+  const EXPECTED = `${WORDS.slice(0, 8).join(" ")}…`; // "AAAAA … HHHHH…"
+
+  it("returns the collapsed string unchanged when within the cap", () => {
+    expect(truncateAtWordBoundary("Summer Kickoff Party", 50)).toBe("Summer Kickoff Party");
+  });
+
+  it("cuts a long string at the last word boundary and appends an ellipsis", () => {
+    expect(truncateAtWordBoundary(WORDS.join(" "), 50)).toBe(EXPECTED);
+    expect(Array.from(EXPECTED).length).toBe(48); // 47 kept + ellipsis
+  });
+
+  // Unicode-whitespace lockstep (twice review-flagged): NBSP U+00A0 and ideographic space U+3000
+  // MUST collapse to a single ASCII space BEFORE counting, so all three produce byte-identical
+  // output. Exact expected strings pinned below.
+  it("collapses NBSP (U+00A0) separators identically to ASCII spaces", () => {
+    expect(truncateAtWordBoundary(WORDS.join("\u00a0"), 50)).toBe(EXPECTED);
+  });
+
+  it("collapses ideographic-space (U+3000) separators identically to ASCII spaces", () => {
+    expect(truncateAtWordBoundary(WORDS.join("\u3000"), 50)).toBe(EXPECTED);
+  });
+
+  it("collapses mixed Unicode-whitespace runs and trims both ends", () => {
+    // Leading/trailing Unicode whitespace + mixed NBSP/U+3000 interior runs.
+    const input = `\u00a0\u3000${WORDS.join("\u00a0\u3000")}\u3000\u00a0`;
+    expect(truncateAtWordBoundary(input, 50)).toBe(EXPECTED);
+  });
+
+  it("cuts at 50 codepoints without splitting surrogate-pair emoji", () => {
+    const out = truncateAtWordBoundary("\u{1F600}".repeat(60), 50);
+    expect(out).toBe(`${"\u{1F600}".repeat(50)}…`);
+    expect(Array.from(out).length).toBe(51); // 50 emoji + ellipsis, never a lone surrogate
+    expect(out).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  it("returns an empty string for whitespace-only input (caller omits the field)", () => {
+    expect(truncateAtWordBoundary("\u00a0\u3000  \n\t", 130)).toBe("");
+  });
+});
+
+describe("mapEventFeedItem (§4.1d)", () => {
+  const baseEvent: EventFeedItem = {
+    id: "123",
+    occurrence_id: "123:2",
+    title: "Summer Kickoff Party",
+    description: "Join us for food, drinks, and live music.",
+    starts_at: "2026-07-18T19:00:00-07:00",
+    ends_at: "2026-07-18T22:00:00-07:00",
+    timezone: "America/Phoenix",
+    location_name: "The Rooftop",
+    custom_address: null,
+    image_url: "https://cdn.ing/events/1.jpg",
+    registration_url: "https://tickets.example.com/123",
+    booking_behavior: "external",
+    price_from: "25.00",
+    recurring_summary: "Weekly on Fridays",
+  };
+
+  it("maps a fully-populated occurrence to hero props (badge/label in the event tz)", () => {
+    expect(mapEventFeedItem(baseEvent)).toEqual({
+      heading: "Summer Kickoff Party",
+      description: "Join us for food, drinks, and live music.",
+      badgeText: "JUL 18",
+      locationLabel: "Jul 18, 2026 · 7:00 PM",
+      locationSublabel: "The Rooftop",
+      image: { src: "https://cdn.ing/events/1.jpg", alt: "Summer Kickoff Party" },
+      stats: [
+        { value: "$25.00", label: "From" },
+        { value: "Weekly on Fridays", label: "Schedule" },
+      ],
+      actions: [{ label: "Register", href: "https://tickets.example.com/123" }],
+    });
+  });
+
+  it("truncates the heading ≤ 50 codepoints at a word boundary (§4.1d)", () => {
+    const title = "AAAAA BBBBB CCCCC DDDDD EEEEE FFFFF GGGGG HHHHH IIIII JJJJJ";
+    expect(mapEventFeedItem({ ...baseEvent, title }).heading).toBe(
+      "AAAAA BBBBB CCCCC DDDDD EEEEE FFFFF GGGGG HHHHH…"
+    );
+  });
+
+  it("uses the raw (untruncated) title as the image alt", () => {
+    const title = "AAAAA BBBBB CCCCC DDDDD EEEEE FFFFF GGGGG HHHHH IIIII JJJJJ";
+    expect(mapEventFeedItem({ ...baseEvent, title }).image?.alt).toBe(title);
+  });
+
+  it("OMITS description when blank/whitespace-only (never fabricated)", () => {
+    const out = mapEventFeedItem({ ...baseEvent, description: "\u00a0\u3000  " });
+    expect(out).not.toHaveProperty("description");
+  });
+
+  it("truncates a long description ≤ 130 codepoints at a word boundary", () => {
+    const long = `${"word ".repeat(40)}tail`; // 205 chars, well over 130
+    const out = mapEventFeedItem({ ...baseEvent, description: long });
+    expect(Array.from(out.description ?? "").length).toBeLessThanOrEqual(131);
+    expect(out.description?.endsWith("…")).toBe(true);
+    expect(out.description).not.toContain("  "); // whitespace collapsed
+  });
+
+  it("prefers location_name, falls back to custom_address, omits when neither", () => {
+    expect(
+      mapEventFeedItem({ ...baseEvent, location_name: null, custom_address: "123 Main St" })
+        .locationSublabel
+    ).toBe("123 Main St");
+    const neither = mapEventFeedItem({
+      ...baseEvent,
+      location_name: null,
+      custom_address: "   ",
+    });
+    expect(neither).not.toHaveProperty("locationSublabel");
+  });
+
+  it("OMITS the image when image_url is absent (text-column collapse allowed)", () => {
+    const out = mapEventFeedItem({ ...baseEvent, image_url: null });
+    expect(out).not.toHaveProperty("image");
+  });
+
+  describe("stats — REAL data only, OMITTED when none (§4.1d)", () => {
+    it("emits both stats when price and recurring_summary are present", () => {
+      expect(mapEventFeedItem(baseEvent).stats).toEqual([
+        { value: "$25.00", label: "From" },
+        { value: "Weekly on Fridays", label: "Schedule" },
+      ]);
+    });
+
+    it("emits only the price stat when there is no recurring summary", () => {
+      const out = mapEventFeedItem({ ...baseEvent, recurring_summary: null });
+      expect(out.stats).toEqual([{ value: "$25.00", label: "From" }]);
+    });
+
+    it("emits only the schedule stat when there is no price", () => {
+      const out = mapEventFeedItem({ ...baseEvent, price_from: null });
+      expect(out.stats).toEqual([{ value: "Weekly on Fridays", label: "Schedule" }]);
+    });
+
+    it("OMITS stats entirely when neither price nor recurring summary is real", () => {
+      const out = mapEventFeedItem({
+        ...baseEvent,
+        price_from: null,
+        recurring_summary: null,
+      });
+      expect(out).not.toHaveProperty("stats");
+    });
+  });
+
+  describe("actions — Register only when registration_url present (§4.1d)", () => {
+    it("emits a single Register action when registration_url is present", () => {
+      expect(mapEventFeedItem(baseEvent).actions).toEqual([
+        { label: "Register", href: "https://tickets.example.com/123" },
+      ]);
+    });
+
+    it("OMITS actions when registration_url is absent", () => {
+      const out = mapEventFeedItem({ ...baseEvent, registration_url: null });
+      expect(out).not.toHaveProperty("actions");
+    });
+  });
+
+  describe("constraint caps (§4.1d): actions ≤ 2, stats ≤ 4", () => {
+    it("never emits more than 2 actions or 4 stats", () => {
+      const out = mapEventFeedItem(baseEvent);
+      expect((out.actions ?? []).length).toBeLessThanOrEqual(2);
+      expect((out.stats ?? []).length).toBeLessThanOrEqual(4);
+    });
+  });
+
+  describe("date/time formatting (event timezone, DST-free Phoenix)", () => {
+    it("builds the badge as uppercased short date in the event tz", () => {
+      // 19:00 -07:00 in America/Phoenix (UTC-7 year-round) → Jul 18.
+      expect(mapEventFeedItem(baseEvent).badgeText).toBe("JUL 18");
+    });
+
+    it("builds the location label with a middot separator and ASCII space before AM/PM", () => {
+      const label = mapEventFeedItem(baseEvent).locationLabel ?? "";
+      expect(label).toBe("Jul 18, 2026 · 7:00 PM");
+      // No narrow/regular no-break space slipped in from ICU (lockstep with Ruby strftime).
+      expect(label).not.toMatch(/[\u202f\u00a0]/);
+    });
+
+    it("degrades to UTC (never throws) for an unknown timezone", () => {
+      const out = mapEventFeedItem({ ...baseEvent, timezone: "Not/AZone" });
+      // 2026-07-19T02:00:00Z in UTC → Jul 19, 2:00 AM.
+      expect(out.badgeText).toBe("JUL 19");
+      expect(out.locationLabel).toBe("Jul 19, 2026 · 2:00 AM");
+    });
+
+    it("omits badge/label for an unparseable starts_at (never fabricated)", () => {
+      const out = mapEventFeedItem({ ...baseEvent, starts_at: "not-a-date" });
+      expect(out).not.toHaveProperty("badgeText");
+      expect(out).not.toHaveProperty("locationLabel");
+    });
   });
 });

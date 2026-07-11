@@ -4,6 +4,8 @@ import type {
   BlogFeedParams,
   BlogFeedTaxonomy,
   CreateFeedClientOptions,
+  EventFeedItem,
+  EventFeedParams,
   FeedClient,
   FeedError,
   FeedItemResponse,
@@ -105,6 +107,41 @@ function buildReviewQuery(params: ReviewFeedParams): string {
   return serialized ? `?${serialized}` : "";
 }
 
+/**
+ * Serialize normalized events list params into wire query params (§3.9).
+ * Mirrors `buildReviewQuery`: every provided filter is serialized on every call (legacy bug #1),
+ * values are URL-encoded by `URLSearchParams`, and `per_page` is clamped to ≤ 50. `location_ids`
+ * is emitted as REPEATED `location_ids[]` params to match the Rails endpoint's array binding.
+ * NOTE: `upcomingOnly` has no wire param on the §3.9 endpoint (the server's default window starts
+ * at "now"), so it is deliberately not serialized here.
+ */
+function buildEventQuery(params: EventFeedParams): string {
+  const query = new URLSearchParams();
+
+  if (typeof params.page === "number") {
+    query.set("page", String(params.page));
+  }
+  if (typeof params.perPage === "number") {
+    const clamped = Math.min(Math.max(1, Math.trunc(params.perPage)), MAX_PER_PAGE);
+    query.set("per_page", String(clamped));
+  }
+  if (params.startDate) query.set("start_date", params.startDate);
+  if (params.endDate) query.set("end_date", params.endDate);
+  if (params.locationIds) {
+    // Repeated `location_ids[]=…` params (Rack array binding). Empty/blank ids are dropped; the
+    // server validates membership against the website's assigned locations (§3.9 / §2.3 rule 3:
+    // an unknown/foreign id → empty result, never an unfiltered one).
+    for (const id of params.locationIds) {
+      if (id !== undefined && id !== null && id !== "") {
+        query.append("location_ids[]", String(id));
+      }
+    }
+  }
+
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
 function toFeedError(status: number, message: string): FeedError {
   return { status, message };
 }
@@ -198,6 +235,11 @@ export function createFeedClient(options: CreateFeedClientOptions): FeedClient {
     listReviews(params: ReviewFeedParams = {}) {
       return requestList<ReviewFeedItem>(
         `${feedsRoot}/reviews${buildReviewQuery(params)}`
+      );
+    },
+    listEvents(params: EventFeedParams = {}) {
+      return requestList<EventFeedItem>(
+        `${feedsRoot}/events${buildEventQuery(params)}`
       );
     },
   };

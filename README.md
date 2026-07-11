@@ -403,7 +403,12 @@ the client can re-query (pagination/filtering). Empty and error states are **dis
   (otherwise renders the empty state).
 
 Sources may expand one input block into many (`expands: true`, contract D6); pass custom
-resolvers via the `sources` option.
+resolvers via the `sources` option. The built-in `events_feed` source (§3.9 / §4.1d) is the first
+such expander: one symbolic block hydrates into **N `hero-event-registration` instances** (one per
+occurrence, `limit` default 6, hard cap 12). Each expanded block gets a unique deterministic `_id`
+(`"<symbolic_id>__ev_<event_id>_<occurrence_index>"`), inherits the symbolic block's `_parent`, and
+carries `_feedMeta { status: "ok", source: "events_feed", expandedFrom: <symbolic_id> }`. On empty
+(`no_upcoming_events`) or error the original symbolic block stays in place unexpanded.
 
 ### `FeedClient`
 

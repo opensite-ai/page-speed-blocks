@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-11
+
+### Added
+- **Events feed support** in the data layer (`@page-speed/blocks/data`), implementing
+  FEED_CONTRACT §3.9 / §4.1d (Dynamic Data Feeds, Phase 4). `events_feed` is the first
+  **EXPANDING** source (`expands: true`, D6): ONE symbolic block hydrates into **N
+  `hero-event-registration` block instances** (one per occurrence). New minor because it adds a
+  new source type to the public data API.
+  - `FeedClient.listEvents({ page?, perPage?, startDate?, endDate?, locationIds? })` — hits
+    `/public_services/websites/{token}/feeds/events` with the same URL-building, `per_page` clamp
+    (≤ 50), filter-on-every-page, and error-envelope conventions as the blog / instagram / reviews
+    clients. `locationIds` serializes as **repeated `location_ids[]` params** (Rack array binding);
+    empty/blank ids are dropped (0 is kept). The server returns pre-expanded OCCURRENCES — RRULE
+    internals never reach the client.
+  - `mapEventFeedItem` — wire (`EventFeedItem`, §3.9) → `hero-event-registration` blockProps
+    (`EventHeroProps`, §4.1d), a pure item→props mapper (client-side mirror of the dashtrack-ai
+    `Feeds::Hydrator` events expansion, lockstep with §4.1d). Rules (never fabricate; omit absent):
+    `heading` = `title` truncated ≤ 50 codepoints at a word boundary; `description` ≤ 130
+    codepoints (omitted when blank); `badgeText` = uppercased short date (`"JUL 18"`) and
+    `locationLabel` = `"%b %-d, %Y · %-l:%M %p"` both formatted **in the event timezone**;
+    `locationSublabel` = `location_name` or `custom_address`; `image` `{ src, alt: title }` only
+    when present; `stats` REAL-only (`price_from` → "From", `recurring_summary` → "Schedule",
+    **omitted entirely when neither exists**); `actions` = `[{ label: "Register", href }]` only
+    when `registration_url` is present. Constraint caps enforced in the mapper: **`actions ≤ 2`,
+    `stats ≤ 4`**.
+  - `resolveEventsFeed` resolver in `resolveBlocks` — expands the occurrence list into N heroes
+    (`limit` default **6**, hard cap **12**; `per_page` is set to the render limit so we never
+    over-fetch). Each expanded block gets a unique, deterministic `_id`
+    (`"<symbolic_id>__ev_<event_id>_<occurrence_index>"`, parsed from `occurrence_id`), inherits
+    the symbolic block's `_parent` (heroes render as siblings in its slot), and carries
+    `_feedMeta { status: "ok", source: "events_feed", expandedFrom: <symbolic_id> }`. The
+    `dataSource` is **dropped** on expanded heroes so a re-resolve never re-expands them, and
+    `blockProps` are the fresh mapped occurrence props (not merged with the symbolic block's
+    authored placeholder props — for an expanding source there is no single bind target).
+  - On **empty** (`no_upcoming_events`) or **error** (`upstream_error`) the ORIGINAL symbolic
+    block stays in place UNEXPANDED with the usual `_feedMeta` (dataSource retained), so the empty
+    / error renderers work unchanged (§2.3 rule 5 — there is no wrapper-block concept).
+  - `truncateAtWordBoundary(text, maxCodepoints)` — extracted shared helper for the Unicode
+    whitespace-collapse + codepoint-slice + word-boundary truncation rule (§4.1c / §4.1d).
+    `reviewTitle` now delegates to it (byte-identical behaviour, guarded by the existing Phase 2
+    title tests). NBSP (U+00A0) and ideographic space (U+3000) collapse identically to an ASCII
+    space; surrogate-pair emoji are never split.
+- New feed types in `src/types/index.ts`: `EventFeedItem`, `EventFeedParams`, `EventHeroProps`,
+  `EventHeroStat`, `EventHeroAction`, `EventHeroImage`; `DataSource` gains optional `startDate` /
+  `endDate` / `locationIds` / `upcomingOnly`; `FeedMeta` gains `expandedFrom`; `FeedClient` gains
+  `listEvents`. These are local string-typed wire/prop shapes (assignable to the block's
+  `React.ReactNode` props), matching the Phase 2/3 convention — no new `@opensite/ui` APIs.
+
+### Fixed
+- **ICU / Ruby lockstep for event date-times:** the event `locationLabel` / `badgeText` formatter
+  normalises the narrow / regular no-break space that some ICU builds insert before AM/PM
+  (U+202F / U+00A0) to an ASCII space, so the output is byte-identical across Node/ICU versions
+  AND with Ruby's `strftime` `"%-l:%M %p"`. An unknown/invalid IANA timezone degrades to UTC
+  rather than throwing; an unparseable `starts_at` omits the badge/label (never a fabricated date).
+
 ## [0.4.0] - 2026-07-10
 
 ### Added
