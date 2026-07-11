@@ -1,0 +1,18 @@
+# pnpm settings (single-package repo; the empty `packages` list just keeps
+# pnpm in non-workspace mode).
+packages: []
+
+# esbuild's postinstall downloads its platform binary — a legit native dep
+# (same approval class as sharp in the showcase app).
+allowBuilds:
+  esbuild: true
+
+# Exempt our first-party packages from the registry minimum-release-age
+# supply-chain policy — we consume our own publishes minutes after they land.
+# IMPORTANT: entries are matched against the bare package NAME (globs
+# supported); a version-pinned entry like "@opensite/ui@3.12.1" does NOT match
+# and will still fail non-interactive installs (pnpm's interactive prompt
+# auto-adds the pinned form — convert it to the bare form if one appears).
+minimumReleaseAgeExclude:
+  - "@opensite/ui"
+  - "@page-speed/*"
