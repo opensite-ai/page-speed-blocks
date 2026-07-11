@@ -832,6 +832,50 @@ describe("resolveBlocks — events_feed expansion (§3.9 / §4.1d, D6, built-in 
     for (const b of out) expect(b.dataSource).toBeUndefined();
   });
 
+  it("mints a MINIMAL block (§4.1d): EXACT key set, no inherited authored block-level fields", async () => {
+    // Symbolic source carrying block-level presentation that must NOT survive expansion.
+    const out = await resolveBlocks(
+      [
+        symbolicBlock({
+          _name: "Events Hero",
+          tag: "section",
+          styles: "bg-slate-900 py-24",
+          styles_attrs: { role: "region" },
+          backgroundImage: "https://cdn.ing/bg.jpg",
+          content: "authored copy",
+          src: "https://cdn.ing/authored.jpg",
+          alt: "authored alt",
+          link: { href: "/authored" },
+        }),
+      ],
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(occurrences) }
+    );
+    // EXACTLY the contract-enumerated fields — byte-for-byte lockstep with the Ruby hydrator.
+    for (const b of out) {
+      expect(Object.keys(b).sort()).toEqual([
+        "_feedMeta",
+        "_id",
+        "_parent",
+        "_type",
+        "blockProps",
+      ]);
+    }
+    // No authored block-level field (nor dataSource) leaked onto the concrete heroes.
+    const first = out[0] as Record<string, unknown>;
+    expect(first.dataSource).toBeUndefined();
+    expect(first._name).toBeUndefined();
+    expect(first.tag).toBeUndefined();
+    expect(first.styles).toBeUndefined();
+    expect(first.styles_attrs).toBeUndefined();
+    expect(first.backgroundImage).toBeUndefined();
+    expect(first.content).toBeUndefined();
+    expect(first.src).toBeUndefined();
+    expect(first.alt).toBeUndefined();
+    expect(first.link).toBeUndefined();
+    // _parent still carries the inherited value (present, not dropped).
+    expect(first._parent).toBe("section_1");
+  });
+
   it("places expanded heroes contiguously in the source's slot, siblings preserved", async () => {
     const input: Block[] = [
       { _id: "hdr", _type: "Box", content: "header" },

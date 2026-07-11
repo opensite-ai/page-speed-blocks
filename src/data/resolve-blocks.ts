@@ -454,30 +454,31 @@ function expandedEventId(sourceId: string, item: EventFeedItem, position: number
 }
 
 /**
- * Mint one `hero-event-registration` block from an event occurrence. Block-level presentation
- * (styles, tag, `_name`) is inherited from the symbolic block; `_parent` is inherited so the
- * heroes render as siblings in the source's slot (or as roots if the source was a root).
+ * Mint one `hero-event-registration` block from an event occurrence. §4.1d expansion mechanics
+ * enumerate the expanded block's fields EXACTLY — `{ _id, _parent, _type, blockProps, _feedMeta }`
+ * and NOTHING else. This is a minimal mint, byte-for-byte lockstep with the dashtrack-ai hydrator
+ * (`Feeds::Hydrator#mint_event_block`), which builds the identical minimal hash. Authored
+ * block-level presentation on the symbolic source (styles, tag, `_name`, `styles_attrs`,
+ * backgroundImage, content, src, link, etc.) is DELIBERATELY DROPPED — it is NOT contract-
+ * enumerated and must not leak onto the concrete heroes (that would break lockstep parity).
  *
- * The `dataSource` is DELIBERATELY DROPPED: the expanded heroes are concrete blocks, not symbolic
- * sources, and re-running `resolveBlocks` must not re-expand them. `blockProps` are the fresh
- * mapped occurrence props (§4.1d) — NOT merged with the symbolic block's authored props: for an
- * expanding source there is no single bind target, and each hero must show ONLY real occurrence
+ * `_parent` carries the symbolic block's inherited value so the heroes render as siblings in the
+ * source's slot (or as roots if the source was a root). NOTE: for a root source blocks emits
+ * `_parent: null` while the Ruby hydrator omits the key (`unless parent.nil?`); both resolve to
+ * root (getRootBlocks treats null/absent identically) and `_parent` is contract-enumerated, so
+ * this residual is benign. The `dataSource` is DROPPED: expanded heroes are concrete blocks, not
+ * symbolic sources, and re-running `resolveBlocks` must not re-expand them. `blockProps` are the
+ * fresh mapped occurrence props (§4.1d) — NOT merged with the symbolic block's authored props: for
+ * an expanding source there is no single bind target, and each hero must show ONLY real occurrence
  * data with absent regions collapsing (contract "omit absent"), so `bindTarget` is ignored.
  */
 function mintEventBlock(sourceBlock: Block, item: EventFeedItem, position: number): Block {
-  const {
-    dataSource: _omitDataSource,
-    blockProps: _omitBlockProps,
-    _feedMeta: _omitFeedMeta,
-    ...rest
-  } = sourceBlock;
-  const blockProps: Record<string, unknown> = { ...mapEventFeedItem(item) };
+  // Mint EXACTLY the §4.1d-enumerated fields; do NOT spread the symbolic block.
   const eventBlock: Block = {
-    ...rest,
     _id: expandedEventId(sourceBlock._id, item, position),
     _type: HERO_EVENT_BLOCK_TYPE,
     _parent: sourceBlock._parent ?? null,
-    blockProps,
+    blockProps: { ...mapEventFeedItem(item) },
   };
   return withFeedMeta(eventBlock, {
     status: "ok",
