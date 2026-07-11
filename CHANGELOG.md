@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-10
+
+### Added
+- **Reviews / testimonials feed support** in the data layer (`@page-speed/blocks/data`),
+  implementing FEED_CONTRACT §3.8 / §4.1c (Dynamic Data Feeds, Phase 2):
+  - `FeedClient.listReviews({ page?, perPage?, minRating?, platforms?, locationId?, sortBy?, sortDir? })`
+    — hits `/public_services/websites/{token}/feeds/reviews` with the same URL-building,
+    `per_page` clamp (≤ 50), filter-on-every-page, and error-envelope conventions as the blog /
+    instagram clients. `platforms` serializes as **repeated `platforms[]` params** (Rack array
+    binding) to match the Rails endpoint; empty platform entries are dropped.
+  - `mapTestimonialItem` — wire (`ReviewFeedItem`, §3.8) → base `TestimonialItem` prop mapper
+    (client-side mirror of the dashtrack-ai hydrator, lockstep with §4.1c): `content` → `quote`,
+    `reviewer_name` → `author`, numeric-only `rating` (**never fabricated**), and a
+    `{ label: "Read on <Platform>", href }` `linkConfig` **only when `profile_url` is present**.
+    `avatar_url` is present on the wire but **intentionally never mapped** (§3.8 hotlinked-URL rot).
+  - Coercion layer for the two custom item shapes: `mapReviewItem` (`ReviewItem` for
+    `testimonials-list-verified` / `testimonials-images-helpful` — `quote` → `content`, a required
+    word-boundary `title`, formatted `date`, `verified: true`) and `mapSocialTestimonialItem`
+    (`SocialTestimonialItem` for `testimonials-twitter-cards` — `content`, `handle` unmapped).
+  - `platformLabel` — maps `review_type` enum keys to display labels (e.g. `google` → `Google`,
+    `applemaps` → `Apple Maps`); unknown keys capitalize, blank falls back generically.
+  - `testimonials_feed` resolver in `resolveBlocks` — chooses the per-block item shape, inlines
+    into the bind target, and attaches `ok` / `empty` (`no_reviews`) / `error` (`upstream_error`)
+    `_feedMeta`, mirroring the blog / instagram resolvers.
+  - `DEFAULT_BIND_TARGETS` gains all 20 array-bound testimonials blocks (`testimonials` for the 17
+    array/social blocks, `reviews` for list-verified / images-helpful / grid-add-review).
+  - **New `SINGLE_BIND_TARGETS` mechanism** — a generic map (any source may use it) that binds
+    `items[0]` as a single OBJECT (not an array) to the target prop; Phase 2 uses it for the
+    single-quote trio `testimonials-company-logo` / `-large-quote` / `-split-image` (prop
+    `testimonial`). `resolveBindTarget` consults it ahead of the array-default map.
+- New feed types in `src/types/index.ts`: `ReviewFeedItem`, `ReviewFeedParams`, `TestimonialItem`,
+  `ReviewItem`, `SocialTestimonialItem`; `DataSource` gains optional `minRating` / `platforms` /
+  `locationId`; `FeedClient` gains `listReviews`. These are local string-typed wire/prop shapes
+  (assignable to the block's `React.ReactNode` props), matching the Phase 3 convention — the code
+  does not depend on new `@opensite/ui` APIs.
+
+### Changed
+- `@opensite/ui` **3.12.1 → 3.13.0** (exact pin). Not required by the code above, but the pin is
+  what consumers resolve through — 3.13.0 carries the testimonials StarRating fixes
+  (per-item real ratings on `testimonials-grid-add-review` / `testimonials-stats-header`) and the
+  `testimonials_feed` contract notes, so blocks must not strand downstream installs at 3.12.1.
+
+### Security
+- The data layer never maps review avatars or `review_photos`: `avatar_url` ships on the wire for
+  future use but is dropped by every mapper (FEED_CONTRACT §3.8 media caveat — hotlinked external
+  platform URLs are rot-prone and must not reach client sites). `profile_url` maps (a dead link
+  degrades harmlessly). Visibility filtering (`show_on_site` / `is_hidden` / `deleted_at`) is the
+  server's responsibility and is never assumed client-side.
+
+### Fixed
+- **Lockstep parity with the dashtrack-ai reference** (`app/services/feeds/hydrator.rb` +
+  `testimonials_feed_resolver.rb`, FEED_CONTRACT §4.1c):
+  - `platformLabel` — the `tripadvisor` label was `"Tripadvisor"`; corrected to **`"TripAdvisor"`**
+    (capital A) to match `TestimonialsFeedResolver::PLATFORM_LABELS` byte-for-byte. All 18
+    `review_type` enum keys now match the Ruby map exactly; a hardcoded-pairs test guards against
+    future drift on either side. (The 18 keys are the full `LocationReview::REVIEW_TYPE_VALUES`
+    enum set, so the capitalize fallback is unreachable for any valid `review_type`.)
+  - `mapReviewItem` now returns **`ReviewItem | null`**, DROPPING any item without a numeric
+    `rating` for the two `ReviewItem` blocks (`testimonials-list-verified` /
+    `testimonials-images-helpful`) instead of rendering it rating-less — `rating` is REQUIRED and
+    must never be fabricated (§2.3 rule 5). The `testimonials_feed` resolver filters the dropped
+    items (mirror of the Ruby `filter_map`) and yields the `empty` / `no_reviews` state when every
+    item drops, matching `Feeds::Hydrator#review_item_shape` / `#hydrate_testimonials_feed`.
+    `testimonials-grid-add-review` (base-shape passthrough), single-bind, social, and default
+    targets are unchanged. Unreachable today (the server excludes NULL ratings) but enforced for
+    lockstep integrity against §3.8's `rating int|null` wire type.
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

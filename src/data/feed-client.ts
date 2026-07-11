@@ -11,6 +11,8 @@ import type {
   FeedResponseMeta,
   InstagramFeedItem,
   InstagramFeedParams,
+  ReviewFeedItem,
+  ReviewFeedParams,
 } from "../types/index.js";
 
 /** Upper bound for `per_page` (FEED_CONTRACT §3.2 — clamped client-side too). */
@@ -58,6 +60,46 @@ function buildInstagramQuery(params: InstagramFeedParams): string {
     query.set("per_page", String(clamped));
   }
   if (params.hashtag) query.set("hashtag", params.hashtag);
+
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
+/**
+ * Serialize normalized reviews list params into wire query params (§3.8).
+ * Mirrors `buildBlogQuery`: every provided filter is serialized on every call (legacy bug #1),
+ * values are URL-encoded by `URLSearchParams`, and `per_page` is clamped to ≤ 50. `platforms`
+ * is emitted as REPEATED `platforms[]` params to match the Rails endpoint's array binding.
+ */
+function buildReviewQuery(params: ReviewFeedParams): string {
+  const query = new URLSearchParams();
+
+  if (typeof params.page === "number") {
+    query.set("page", String(params.page));
+  }
+  if (typeof params.perPage === "number") {
+    const clamped = Math.min(Math.max(1, Math.trunc(params.perPage)), MAX_PER_PAGE);
+    query.set("per_page", String(clamped));
+  }
+  if (typeof params.minRating === "number") {
+    query.set("min_rating", String(params.minRating));
+  }
+  if (params.platforms) {
+    // Repeated `platforms[]=…` params (Rack array binding). An unknown key is left to the
+    // server to reject (§2.3 rule 3: unknown platform → empty result, never unfiltered).
+    for (const platform of params.platforms) {
+      if (platform) query.append("platforms[]", platform);
+    }
+  }
+  if (
+    params.locationId !== undefined &&
+    params.locationId !== null &&
+    params.locationId !== ""
+  ) {
+    query.set("location_id", String(params.locationId));
+  }
+  if (params.sortBy) query.set("sort_by", params.sortBy);
+  if (params.sortDir) query.set("sort_dir", params.sortDir);
 
   const serialized = query.toString();
   return serialized ? `?${serialized}` : "";
@@ -151,6 +193,11 @@ export function createFeedClient(options: CreateFeedClientOptions): FeedClient {
     listInstagram(params: InstagramFeedParams = {}) {
       return requestList<InstagramFeedItem>(
         `${feedsRoot}/instagram${buildInstagramQuery(params)}`
+      );
+    },
+    listReviews(params: ReviewFeedParams = {}) {
+      return requestList<ReviewFeedItem>(
+        `${feedsRoot}/reviews${buildReviewQuery(params)}`
       );
     },
   };
