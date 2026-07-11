@@ -48,6 +48,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   degrades harmlessly). Visibility filtering (`show_on_site` / `is_hidden` / `deleted_at`) is the
   server's responsibility and is never assumed client-side.
 
+### Fixed
+- **Lockstep parity with the dashtrack-ai reference** (`app/services/feeds/hydrator.rb` +
+  `testimonials_feed_resolver.rb`, FEED_CONTRACT §4.1c):
+  - `platformLabel` — the `tripadvisor` label was `"Tripadvisor"`; corrected to **`"TripAdvisor"`**
+    (capital A) to match `TestimonialsFeedResolver::PLATFORM_LABELS` byte-for-byte. All 18
+    `review_type` enum keys now match the Ruby map exactly; a hardcoded-pairs test guards against
+    future drift on either side. (The 18 keys are the full `LocationReview::REVIEW_TYPE_VALUES`
+    enum set, so the capitalize fallback is unreachable for any valid `review_type`.)
+  - `mapReviewItem` now returns **`ReviewItem | null`**, DROPPING any item without a numeric
+    `rating` for the two `ReviewItem` blocks (`testimonials-list-verified` /
+    `testimonials-images-helpful`) instead of rendering it rating-less — `rating` is REQUIRED and
+    must never be fabricated (§2.3 rule 5). The `testimonials_feed` resolver filters the dropped
+    items (mirror of the Ruby `filter_map`) and yields the `empty` / `no_reviews` state when every
+    item drops, matching `Feeds::Hydrator#review_item_shape` / `#hydrate_testimonials_feed`.
+    `testimonials-grid-add-review` (base-shape passthrough), single-bind, social, and default
+    targets are unchanged. Unreachable today (the server excludes NULL ratings) but enforced for
+    lockstep integrity against §3.8's `rating int|null` wire type.
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

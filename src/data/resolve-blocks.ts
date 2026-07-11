@@ -12,6 +12,7 @@ import type {
   ResolveBlocksOptions,
   ReviewFeedItem,
   ReviewFeedParams,
+  ReviewItem,
 } from "../types/index.js";
 import { createFeedClient } from "./feed-client.js";
 import {
@@ -296,12 +297,18 @@ const SOCIAL_TESTIMONIAL_BLOCK_TYPES = new Set(["testimonials-twitter-cards"]);
  * the base `TestimonialItem` for everything else. Single-bind blocks (§4.1c) receive `items[0]`
  * as a single OBJECT rather than an array. Only the bind target is written — every other
  * authored prop is untouched (§2.3 rule 2).
+ *
+ * Returns `null` when the `ReviewItem` coercion DROPS every item (none carried a numeric
+ * rating). Lockstep with the dashtrack-ai reference `Feeds::Hydrator#coerce_testimonials`
+ * (`filter_map { review_item_shape }`) + the `items.empty?` guard in `#hydrate_testimonials_feed`:
+ * a block with nothing to render is an honest empty state, not `ok`. Only the two ReviewItem
+ * blocks can drop; base (incl. grid-add-review) and social shapes never drop.
  */
 function inlineTestimonialItems(
   block: Block,
   bindTarget: string,
   wireItems: ReviewFeedItem[]
-): Block {
+): Block | null {
   const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
 
   // Single-bind: bind the first item as a single OBJECT (base TestimonialItem), never an array.
@@ -312,7 +319,14 @@ function inlineTestimonialItems(
 
   let items: unknown[];
   if (REVIEW_ITEM_BLOCK_TYPES.has(block._type)) {
-    items = wireItems.map(mapReviewItem);
+    // filter_map mirror: `mapReviewItem` returns null for items lacking a numeric rating,
+    // dropping them (rating is REQUIRED on ReviewItem — §2.3 rule 5, lockstep hydrator.rb).
+    const reviewItems = wireItems
+      .map(mapReviewItem)
+      .filter((item): item is ReviewItem => item !== null);
+    // All items dropped → nothing to render → honest empty state (handled by the caller).
+    if (reviewItems.length === 0) return null;
+    items = reviewItems;
   } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(block._type)) {
     items = wireItems.map(mapSocialTestimonialItem);
   } else {
@@ -360,6 +374,21 @@ const resolveReviewsFeed: FeedSourceResolver = async ({
   }
 
   const inlined = inlineTestimonialItems(block, bindTarget, response.data);
+
+  // The ReviewItem coercion can drop every fetched item (none carried a numeric rating);
+  // that is an honest empty state, not `ok`. Mirrors hydrator.rb `#hydrate_testimonials_feed`
+  // `items.empty?` → `status: 'empty', reason: 'no_reviews'` (EMPTY_REASON).
+  if (inlined === null) {
+    return [
+      withFeedMeta(block, {
+        status: "empty",
+        reason: "no_reviews",
+        source: "testimonials_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
   return [withFeedMeta(inlined, okMeta("testimonials_feed", response.meta))];
 };
 

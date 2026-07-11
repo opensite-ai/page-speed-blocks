@@ -580,6 +580,65 @@ describe("resolveBlocks — testimonials_feed (§3.8 / §4.1c)", () => {
     expect(out._feedMeta?.reason).toBe("upstream_error");
     expect(out.blockProps?.testimonials).toBeUndefined();
   });
+
+  // Drop-unrated lockstep with the dashtrack-ai REFERENCE
+  // `Feeds::Hydrator#review_item_shape` (returns nil when rating is not Numeric) +
+  // `#coerce_testimonials` (filter_map) + `#hydrate_testimonials_feed` (items.empty? guard).
+  // Unreachable today (the server filters rating >= min_rating, NULLs excluded) but §3.8's
+  // wire type is `rating int|null`, so the ReviewItem coercion enforces it regardless.
+  const reviewUnrated: ReviewFeedItem = {
+    ...reviewGoogle,
+    id: "9c3b7a10-0000-4000-8000-000000000003",
+    reviewer_name: "Alex R.",
+    rating: null,
+    profile_url: null,
+  };
+
+  for (const type of ["testimonials-list-verified", "testimonials-images-helpful"]) {
+    it(`drops items without a numeric rating for ${type} (rating is REQUIRED on ReviewItem)`, async () => {
+      const fetcher = routeFetcher([
+        ["/feeds/reviews", { data: [reviewGoogle, reviewUnrated, reviewYelp], meta: null }],
+      ]);
+      const block: Block = { _id: "1", _type: type, dataSource: { type: "testimonials_feed" } };
+      const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+      const reviews = out.blockProps?.reviews as Array<Record<string, unknown>>;
+      // The unrated item is dropped; the two rated items survive.
+      expect(reviews).toHaveLength(2);
+      expect(reviews.every((r) => typeof r.rating === "number")).toBe(true);
+      expect(out._feedMeta?.status).toBe("ok");
+    });
+
+    it(`yields empty/no_reviews when ALL items are unrated for ${type}`, async () => {
+      const fetcher = routeFetcher([
+        ["/feeds/reviews", { data: [reviewUnrated, { ...reviewUnrated, id: "x" }], meta: null }],
+      ]);
+      const block: Block = { _id: "1", _type: type, dataSource: { type: "testimonials_feed" } };
+      const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+      expect(out._feedMeta?.status).toBe("empty");
+      expect(out._feedMeta?.reason).toBe("no_reviews");
+      // Nothing inlined on an empty state.
+      expect(out.blockProps?.reviews).toBeUndefined();
+    });
+  }
+
+  it("KEEPS unrated items (base shape, rating omitted) for testimonials-grid-add-review", async () => {
+    const fetcher = routeFetcher([
+      ["/feeds/reviews", { data: [reviewGoogle, reviewUnrated], meta: null }],
+    ]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-grid-add-review",
+      dataSource: { type: "testimonials_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const reviews = out.blockProps?.reviews as Array<Record<string, unknown>>;
+    // grid-add-review uses the base TestimonialItem shape — no drop; the unrated item stays
+    // (rating simply omitted). Only list-verified/images-helpful drop.
+    expect(reviews).toHaveLength(2);
+    expect(reviews[0]).toHaveProperty("rating", 5);
+    expect(reviews[1]).not.toHaveProperty("rating");
+    expect(out._feedMeta?.status).toBe("ok");
+  });
 });
 
 describe("resolveBlocks — unknown source", () => {

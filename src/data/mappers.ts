@@ -153,7 +153,9 @@ const PLATFORM_LABELS: Record<string, string> = {
   foursquare: "Foursquare",
   grubhub: "Grubhub",
   opentable: "OpenTable",
-  tripadvisor: "Tripadvisor",
+  // "TripAdvisor" (capital A) — byte-for-byte parity with dashtrack-ai
+  // TestimonialsFeedResolver::PLATFORM_LABELS (lockstep reference, §4.1c).
+  tripadvisor: "TripAdvisor",
   ubereats: "Uber Eats",
   bbb: "BBB",
   bing: "Bing",
@@ -223,15 +225,24 @@ export function mapTestimonialItem(item: ReviewFeedItem): TestimonialItem {
  * Coerce a wire `ReviewFeedItem` into the `ReviewItem` shape (§4.1c) for
  * `testimonials-list-verified` / `testimonials-images-helpful`: `content` (renamed from
  * `quote`), a required word-boundary `title`, a formatted `date`, and `verified: true`
- * (every feed item is platform-ingested). `rating` only when numeric — never fabricated.
+ * (every feed item is platform-ingested).
+ *
+ * Returns `null` for an item WITHOUT a numeric rating — the item is DROPPED (not rendered
+ * without a rating). Lockstep with the dashtrack-ai reference
+ * `Feeds::Hydrator#review_item_shape` (`return nil unless rating.is_a?(Numeric)`): `rating`
+ * is REQUIRED on `ReviewItem` and must never be fabricated (§2.3 rule 5). Callers filter the
+ * nulls (mirror of the Ruby `filter_map`); if every item drops, an empty state is yielded.
+ * Unreachable today (the server filters `rating >= min_rating`, excluding NULLs) but §3.8's
+ * wire type is `rating int|null`, so the coercion enforces the invariant regardless.
  */
-export function mapReviewItem(item: ReviewFeedItem): ReviewItem {
+export function mapReviewItem(item: ReviewFeedItem): ReviewItem | null {
+  if (typeof item.rating !== "number") return null;
   const result: ReviewItem = {
     content: item.content,
     title: reviewTitle(item.content),
+    rating: item.rating,
     verified: true,
   };
-  if (typeof item.rating === "number") result.rating = item.rating;
   if (item.reviewer_name) result.author = item.reviewer_name;
   const date = formatFeedDate(item.time_created);
   if (date) result.date = date;

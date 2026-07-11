@@ -275,28 +275,29 @@ describe("testimonial mappers (§4.1c)", () => {
     it("derives a word-boundary title (~40 chars) with an ellipsis when truncated", () => {
       const out = mapReviewItem(review);
       // Cut window is 40 chars: "Absolutely wonderful service and the fo" → last space before "fo".
-      expect(out.title).toBe("Absolutely wonderful service and the…");
-      expect(out.title.endsWith("…")).toBe(true);
+      expect(out?.title).toBe("Absolutely wonderful service and the…");
+      expect(out?.title.endsWith("…")).toBe(true);
       // Word boundary: never cuts mid-word.
-      expect(out.title).not.toContain("fo…");
+      expect(out?.title).not.toContain("fo…");
     });
 
     it("uses the whole content as title when it is short (no ellipsis)", () => {
       const out = mapReviewItem({ ...review, content: "Great spot!" });
-      expect(out.title).toBe("Great spot!");
-      expect(out.title.endsWith("…")).toBe(false);
+      expect(out?.title).toBe("Great spot!");
+      expect(out?.title.endsWith("…")).toBe(false);
     });
 
     it("collapses whitespace in the title", () => {
       const out = mapReviewItem({ ...review, content: "Great\n\n  spot!" });
-      expect(out.title).toBe("Great spot!");
+      expect(out?.title).toBe("Great spot!");
     });
 
-    it("omits rating/date when absent, keeps verified:true", () => {
-      const out = mapReviewItem({ ...review, rating: null, time_created: "" });
-      expect(out).not.toHaveProperty("rating");
-      expect(out).not.toHaveProperty("date");
-      expect(out.verified).toBe(true);
+    it("DROPS the item (returns null) when rating is absent — never rendered rating-less (lockstep hydrator.rb review_item_shape / §2.3 rule 5)", () => {
+      expect(mapReviewItem({ ...review, rating: null, time_created: "" })).toBeNull();
+    });
+
+    it("keeps a numeric zero-ish rating (1 is a number → not dropped)", () => {
+      expect(mapReviewItem({ ...review, rating: 1 })?.rating).toBe(1);
     });
   });
 
@@ -317,12 +318,47 @@ describe("testimonial mappers (§4.1c)", () => {
   });
 
   describe("platformLabel", () => {
+    // Byte-for-byte parity with the dashtrack-ai LOCKSTEP REFERENCE
+    // `Feeds::TestimonialsFeedResolver::PLATFORM_LABELS`
+    // (app/services/feeds/testimonials_feed_resolver.rb). These 18 pairs are ALSO the exact
+    // `LocationReview::REVIEW_TYPE_VALUES` enum key set — so the map covers every valid
+    // `review_type` and the capitalize/`titleize` fallback is UNREACHABLE for any enum key.
+    // Hardcoded on purpose: any future drift on either side must fail this test loudly.
+    const RUBY_PLATFORM_LABELS: ReadonlyArray<readonly [string, string]> = [
+      ["yelp", "Yelp"],
+      ["google", "Google"],
+      ["applemaps", "Apple Maps"],
+      ["doordash", "DoorDash"],
+      ["facebook", "Facebook"],
+      ["foursquare", "Foursquare"],
+      ["grubhub", "Grubhub"],
+      ["opentable", "OpenTable"],
+      ["tripadvisor", "TripAdvisor"],
+      ["ubereats", "Uber Eats"],
+      ["bbb", "BBB"],
+      ["bing", "Bing"],
+      ["booking", "Booking.com"],
+      ["citysearch", "Citysearch"],
+      ["expedia", "Expedia"],
+      ["justeat", "Just Eat"],
+      ["orbitz", "Orbitz"],
+      ["travelocity", "Travelocity"],
+    ];
+
+    it("maps all 18 review_type enum keys byte-for-byte to the Ruby reference labels", () => {
+      expect(RUBY_PLATFORM_LABELS).toHaveLength(18);
+      for (const [key, label] of RUBY_PLATFORM_LABELS) {
+        expect(platformLabel(key)).toBe(label);
+      }
+    });
+
     it("labels known enum keys", () => {
       expect(platformLabel("google")).toBe("Google");
       expect(platformLabel("yelp")).toBe("Yelp");
       expect(platformLabel("applemaps")).toBe("Apple Maps");
       expect(platformLabel("ubereats")).toBe("Uber Eats");
       expect(platformLabel("bbb")).toBe("BBB");
+      expect(platformLabel("tripadvisor")).toBe("TripAdvisor");
     });
 
     it("capitalizes an unknown key rather than throwing", () => {
