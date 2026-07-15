@@ -87,17 +87,76 @@ const GALLERY_BLOCK_TYPES = new Set([
   "carousel-gradient-text",
 ]);
 
+// ---------------------------------------------------------------------------
+// Dual block shapes (FEED_CONTRACT §2 / §4). Two shapes coexist and are NEVER normalized before
+// this pass runs (the client-side `normalizeBlocks` in customer-sites runs AFTER `resolveBlocks`):
+//   • Chai runtime shape  = { _type, _id, blockProps }        (dt-cms / already-normalized pages)
+//   • AI wire shape       = { block_ref | block_name, data }  (octane-generated, persisted verbatim)
+// customer-sites `normalizeBlocks` rebuilds `blockProps` from `data` ONLY, so for wire-shaped
+// blocks the hydrated props MUST land in `data` or they are silently discarded. Both the block-type
+// derivation and the write-container choice are kept byte-for-byte in LOCKSTEP with the dashtrack-ai
+// reference `Feeds::Hydrator` (`app/services/feeds/hydrator.rb` — `#block_type`/`#ref_component_id`
+// and `#props_hash`/`#write_target`); diverging here splits first-load (Ruby) from SPA-nav (this TS).
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive the component-registry id for a block. Chai blocks carry `_type`; AI wire blocks carry
+ * `block_ref`/`block_name` (e.g. `"gallery/instagram-post-grid"`) — take the segment after the
+ * last `/`, no-opping safely when there is no `/` (mirrors customer-sites `chai_pages.tsx`
+ * `normalizeBlocks` and the dashtrack-ai `Feeds::Hydrator#ref_component_id`). Used everywhere the
+ * resolver dispatches on block type (bind-target lookup, gallery/review/social branches).
+ */
+export function blockType(block: Block): string {
+  if (block._type) return block._type;
+  const ref = block.block_ref ?? block.block_name;
+  if (ref) {
+    const segment = ref.split("/").pop();
+    if (segment) return segment;
+  }
+  return "";
+}
+
+/**
+ * True when the block is AI-wire-shaped (`block_ref`/`block_name` present, no `_type`) and its
+ * hydrated props must be written into `data` rather than `blockProps`. Chai-shaped blocks (with
+ * `_type`) stay on the `blockProps` path. Lockstep with hydrator.rb `#props_hash` shape branch.
+ */
+function isBlockRefShaped(block: Block): boolean {
+  if (block._type) return false;
+  return Boolean(block.block_ref ?? block.block_name);
+}
+
+/**
+ * A shallow copy of the block's hydration write container: `data` for wire-shaped blocks,
+ * `blockProps` for chai-shaped blocks. Callers write the bind target (and only the bind target)
+ * into it, then pass it to `withContainer` (§2.3 rule 2 — every other authored prop is untouched).
+ */
+function writeContainer(block: Block): Record<string, unknown> {
+  return isBlockRefShaped(block)
+    ? { ...(block.data ?? {}) }
+    : { ...(block.blockProps ?? {}) };
+}
+
+/** Return a copy of the block with the hydrated container written back to the correct key. */
+function withContainer(block: Block, container: Record<string, unknown>): Block {
+  return isBlockRefShaped(block)
+    ? { ...block, data: container }
+    : { ...block, blockProps: container };
+}
+
 /**
  * Resolve the bind target for a block: explicit `bindTo` → single-bind default → per-block
  * array default → `"posts"`. (Single-bind and array-bind block types are disjoint, so the
- * ordering of the two default maps only matters for clarity.)
+ * ordering of the two default maps only matters for clarity.) The type key is derived via
+ * `blockType` so `block_ref`/`block_name`-shaped blocks hit the same maps as chai blocks.
  */
 export function resolveBindTarget(block: Block): string {
   const explicit = block.dataSource?.bindTo;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const type = blockType(block);
   return (
-    SINGLE_BIND_TARGETS[block._type] ??
-    DEFAULT_BIND_TARGETS[block._type] ??
+    SINGLE_BIND_TARGETS[type] ??
+    DEFAULT_BIND_TARGETS[type] ??
     DEFAULT_BIND_TARGET
   );
 }
@@ -151,28 +210,29 @@ function inlineBlogItems(
   bindTarget: string,
   items: BlogPostItem[]
 ): Block {
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
+  const type = blockType(block);
 
   let finalItems: BlogPostItem[] = items;
-  if (GALLERY_BLOCK_TYPES.has(block._type)) {
+  if (GALLERY_BLOCK_TYPES.has(type)) {
     // Carousel items require a non-null image and a string id (§2.4).
     finalItems = items
       .filter((item) => Boolean(item.image))
       .map((item) => ({ ...item, id: String(item.id) }));
   }
 
-  blockProps[bindTarget] = finalItems;
+  props[bindTarget] = finalItems;
 
   // blog-tech-insights: set featuredPost to the first item when unset (§2.4).
   if (
-    block._type === "blog-tech-insights" &&
-    blockProps.featuredPost == null &&
+    type === "blog-tech-insights" &&
+    props.featuredPost == null &&
     finalItems.length > 0
   ) {
-    blockProps.featuredPost = finalItems[0];
+    props.featuredPost = finalItems[0];
   }
 
-  return { ...block, blockProps };
+  return withContainer(block, props);
 }
 
 /**
@@ -263,10 +323,12 @@ const resolveInstagramFeed: FeedSourceResolver = async ({
     ];
   }
 
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
-  blockProps[bindTarget] = items;
+  const props = writeContainer(block);
+  props[bindTarget] = items;
 
-  return [withFeedMeta({ ...block, blockProps }, okMeta("instagram_feed", response.meta))];
+  return [
+    withFeedMeta(withContainer(block, props), okMeta("instagram_feed", response.meta)),
+  ];
 };
 
 /** Map a symbolic `testimonials_feed` `dataSource` to `FeedClient` review list params (§3.8). */
@@ -312,16 +374,17 @@ function inlineTestimonialItems(
   bindTarget: string,
   wireItems: ReviewFeedItem[]
 ): Block | null {
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
+  const type = blockType(block);
 
   // Single-bind: bind the first item as a single OBJECT (base TestimonialItem), never an array.
-  if (block._type in SINGLE_BIND_TARGETS) {
-    blockProps[bindTarget] = mapTestimonialItem(wireItems[0]);
-    return { ...block, blockProps };
+  if (type in SINGLE_BIND_TARGETS) {
+    props[bindTarget] = mapTestimonialItem(wireItems[0]);
+    return withContainer(block, props);
   }
 
   let items: unknown[];
-  if (REVIEW_ITEM_BLOCK_TYPES.has(block._type)) {
+  if (REVIEW_ITEM_BLOCK_TYPES.has(type)) {
     // filter_map mirror: `mapReviewItem` returns null for items lacking a numeric rating,
     // dropping them (rating is REQUIRED on ReviewItem — §2.3 rule 5, lockstep hydrator.rb).
     const reviewItems = wireItems
@@ -330,14 +393,14 @@ function inlineTestimonialItems(
     // All items dropped → nothing to render → honest empty state (handled by the caller).
     if (reviewItems.length === 0) return null;
     items = reviewItems;
-  } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(block._type)) {
+  } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(type)) {
     items = wireItems.map(mapSocialTestimonialItem);
   } else {
     items = wireItems.map(mapTestimonialItem);
   }
 
-  blockProps[bindTarget] = items;
-  return { ...block, blockProps };
+  props[bindTarget] = items;
+  return withContainer(block, props);
 }
 
 /**
@@ -601,19 +664,19 @@ const resolveBlogPost: FeedSourceResolver = async ({
   }
 
   const detail = mapBlogFeedDetail(response.data);
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
   // §4.3 detail mapping — these are the dynamic content props for the article block.
-  blockProps.title = detail.title;
-  blockProps.markdownString = detail.markdownString;
-  blockProps.author = detail.author;
-  blockProps.date = detail.date;
-  blockProps.image = detail.image;
-  blockProps.imageAlt = detail.imageAlt;
-  blockProps.tags = detail.tags;
-  blockProps.articles = detail.articles;
+  props.title = detail.title;
+  props.markdownString = detail.markdownString;
+  props.author = detail.author;
+  props.date = detail.date;
+  props.image = detail.image;
+  props.imageAlt = detail.imageAlt;
+  props.tags = detail.tags;
+  props.articles = detail.articles;
 
   return [
-    withFeedMeta({ ...block, blockProps }, {
+    withFeedMeta(withContainer(block, props), {
       status: "ok",
       source: "blog_post",
       resolvedAt: nowIso(),

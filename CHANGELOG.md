@@ -59,6 +59,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (U+202F / U+00A0) to an ASCII space, so the output is byte-identical across Node/ICU versions
   AND with Ruby's `strftime` `"%-l:%M %p"`. An unknown/invalid IANA timezone degrades to UTC
   rather than throwing; an unparseable `starts_at` omits the badge/label (never a fabricated date).
+- **`block_ref` / `data` dual-shape hydration** (Dynamic Data Feeds, Phase 5 shape-fix,
+  FEED_CONTRACT §2 / §4). `resolveBlocks` previously assumed every block was chai-shaped
+  (`{ _type, blockProps }`), but AI-generated pages arrive as the wire shape
+  (`{ block_ref: "gallery/instagram-post-grid", data, dataSource }`) and are normalized to chai
+  LAZILY by customer-sites `normalizeBlocks` — which runs AFTER `resolveBlocks` and rebuilds
+  `blockProps` from `data` ONLY. So hydrated props written to `blockProps` on a wire block were
+  silently discarded (feeds never reached the component on `block_ref`-shaped pages).
+  - **Block-type derivation** — new `blockType(block)` helper: uses `_type` when present, else
+    derives the component id from `block_ref`/`block_name` via `split("/").pop()` (no-op when
+    there is no `/`), mirroring `normalizeBlocks` and the dashtrack-ai `Feeds::Hydrator`. Every
+    bind-target / gallery / review / social dispatch now keys off `blockType` so wire blocks hit
+    the same `SINGLE_BIND_TARGETS` / `DEFAULT_BIND_TARGETS` maps as chai blocks.
+  - **Write target** — new `writeContainer` / `withContainer` helpers: for a wire-shaped block
+    (`block_ref`/`block_name`, no `_type`) the hydrated bind target is written into `data`; chai
+    blocks keep writing `blockProps` unchanged (no regression). Applied to the blog / instagram /
+    testimonials list resolvers and the `blog_post` detail resolver. Only the bind target is
+    written — every other authored prop is untouched (§2.3 rule 2).
+  - The `events_feed` expansion mint is **unchanged**: expanded `hero-event-registration` blocks
+    stay chai-shaped (`{ _type, _id, _parent, blockProps, _feedMeta }`) and render via the
+    `normalizeBlocks` passthrough, even from a `block_ref`-shaped symbolic source.
+  - Lockstep with the dashtrack-ai reference `Feeds::Hydrator`
+    (`app/services/feeds/hydrator.rb` — `#block_type` / `#ref_component_id` and
+    `#props_hash` / `#write_target`); the Ruby (build-time) and TS (SPA-nav) resolvers must derive
+    the type id and choose the write container identically.
+- `Block` type (`src/types/index.ts`) gains optional `block_ref` / `block_name` / `data`
+  (AI wire shape). `_type` stays required for the post-normalization render engine.
 
 ## [0.4.0] - 2026-07-10
 

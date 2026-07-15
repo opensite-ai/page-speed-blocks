@@ -9,6 +9,7 @@ import type {
   Block,
   BlogFeedItem,
   BlogFeedDetailItem,
+  DataSource,
   EventFeedItem,
   FeedSourceResolver,
   InstagramFeedItem,
@@ -992,5 +993,198 @@ describe("resolveBlocks — events_feed expansion (§3.9 / §4.1d, D6, built-in 
       fetcher,
     });
     expect(new URL(calls[0]).searchParams.get("per_page")).toBe("6");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI wire (block_ref / data) shape — Phase 5 shape-fix (FEED_CONTRACT §2 / §4).
+// AI-generated pages arrive as { block_ref, data } (octane-emitted, persisted verbatim). They are
+// normalized to chai { _type, blockProps } LAZILY by customer-sites `normalizeBlocks` AFTER
+// resolveBlocks runs, and that normalizer rebuilds blockProps from `data` ONLY. So the resolver must
+// (a) derive the block TYPE from block_ref (`split("/").pop()`) and (b) write hydrated props into
+// `data`, not `blockProps`, or they are silently discarded. dt-cms chai { _type, blockProps } blocks
+// MUST keep working unchanged. Lockstep with dashtrack-ai `Feeds::Hydrator`
+// (app/services/feeds/hydrator.rb — #block_type/#ref_component_id + #props_hash/#write_target).
+// ---------------------------------------------------------------------------
+describe("resolveBlocks — AI wire (block_ref / data) shape (Phase 5 shape-fix, §2/§4)", () => {
+  /**
+   * Build an AI-wire-shaped block (block_ref + data, NO _type). Cast because `_type` is declared
+   * required on `Block` for the post-normalization render engine, yet is genuinely absent on wire
+   * blocks at the data layer — which is exactly the shape this fix handles.
+   */
+  const wireBlock = (
+    block_ref: string,
+    dataSource: DataSource,
+    data: Record<string, unknown> = {}
+  ): Block => ({ _id: `wire_${block_ref}`, block_ref, data, dataSource }) as Block;
+
+  const igImage: InstagramFeedItem = {
+    id: "17900000000000001",
+    permalink: "https://www.instagram.com/p/ABC123/",
+    caption: "Grand opening!",
+    post_type: "image",
+    posted_at: "2026-07-01T09:00:00Z",
+    like_count: 12,
+    comment_count: 3,
+    view_count: null,
+    play_count: null,
+    location_name: null,
+    files: [{ media_type: "image", image_url: "https://cdn.ing/ig/1.jpg", video_url: null }],
+  };
+  const reviewGoogle: ReviewFeedItem = {
+    id: "9c3b7a10-0000-4000-8000-000000000001",
+    reviewer_name: "Dana P.",
+    rating: 5,
+    content: "Absolutely wonderful — the tasting menu was a highlight of our trip.",
+    platform: "google",
+    time_created: "2026-07-01T09:00:00Z",
+    profile_url: "https://www.google.com/maps/contrib/123",
+    avatar_url: "https://lh3.googleusercontent.com/rot.jpg",
+  };
+  const baseEvent: EventFeedItem = {
+    id: "123",
+    occurrence_id: "123:0",
+    title: "Summer Kickoff Party",
+    description: "Join us for food, drinks, and live music.",
+    starts_at: "2026-07-18T19:00:00-07:00",
+    ends_at: "2026-07-18T22:00:00-07:00",
+    timezone: "America/Phoenix",
+    location_name: "The Rooftop",
+    custom_address: null,
+    image_url: "https://cdn.ing/events/1.jpg",
+    registration_url: "https://tickets.example.com/123",
+    booking_behavior: "external",
+    price_from: "25.00",
+    recurring_summary: null,
+  };
+
+  it("resolveBindTarget derives the type key from block_ref (split('/').pop()), no-op on no-slash", () => {
+    // gallery/instagram-post-grid → instagram-post-grid → items
+    expect(
+      resolveBindTarget(wireBlock("gallery/instagram-post-grid", { type: "instagram_feed" }))
+    ).toBe("items");
+    // testimonials array default via block_ref
+    expect(
+      resolveBindTarget(wireBlock("testimonials/testimonials-marquee", { type: "testimonials_feed" }))
+    ).toBe("testimonials");
+    // single-bind default via block_ref (SINGLE_BIND_TARGETS)
+    expect(
+      resolveBindTarget(wireBlock("testimonials/testimonials-large-quote", { type: "testimonials_feed" }))
+    ).toBe("testimonial");
+    // block_name fallback + no "/" segment no-ops safely (parity with normalizeBlocks:261)
+    expect(
+      resolveBindTarget({
+        _id: "n1",
+        block_name: "blog-related-articles",
+        dataSource: { type: "blog_feed" },
+      } as Block)
+    ).toBe("articles");
+    // unknown wire type → posts fallback (§2.3 rule 6)
+    expect(
+      resolveBindTarget(wireBlock("mystery/unknown-block", { type: "blog_feed" }))
+    ).toBe("posts");
+  });
+
+  it("instagram: hydrated items land in `data.items` (NOT blockProps); type derived from block_ref", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [igImage], meta: null }]]);
+    const block = wireBlock(
+      "gallery/instagram-post-grid",
+      { type: "instagram_feed" },
+      { heading: "Follow us" }
+    );
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.data?.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ id: "17900000000000001", image: "https://cdn.ing/ig/1.jpg" });
+    // authored `data` prop untouched (§2.3 rule 2)
+    expect(out.data?.heading).toBe("Follow us");
+    // NOTHING written to blockProps — normalizeBlocks rebuilds blockProps from `data` and would
+    // discard any blockProps write for a wire block.
+    expect(out.blockProps).toBeUndefined();
+    expect(out.dataSource).toEqual(block.dataSource);
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("testimonials: base TestimonialItem[] lands in `data.testimonials` (NOT blockProps)", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block = wireBlock("testimonials/testimonials-marquee", { type: "testimonials_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.data?.testimonials as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ quote: reviewGoogle.content, author: "Dana P.", rating: 5 });
+    expect(out.blockProps).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("testimonials: ReviewItem[] coercion for a block_ref list-verified block lands in `data.reviews`", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block = wireBlock("testimonials/testimonials-list-verified", { type: "testimonials_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const reviews = out.data?.reviews as Array<Record<string, unknown>>;
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ content: reviewGoogle.content, rating: 5, verified: true });
+    expect(reviews[0]).not.toHaveProperty("quote"); // ReviewItem shape, derived via block_ref type
+    expect(out.blockProps).toBeUndefined();
+  });
+
+  it("blog: mapped posts land in `data` under the block_ref-derived bind target (NOT blockProps)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem], meta: null }]]);
+    // blog/blog-related-articles → blog-related-articles → bind target `articles`
+    const block = wireBlock("blog/blog-related-articles", { type: "blog_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const articles = out.data?.articles as Array<Record<string, unknown>>;
+    expect(articles).toHaveLength(1);
+    expect(articles[0]).toMatchObject({ id: 12, title: "Grand opening" });
+    expect(out.blockProps).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("REGRESSION: a chai `_type`/`blockProps` block still writes blockProps, never `data`", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [igImage], meta: null }]]);
+    const block: Block = {
+      _id: "chai_ig",
+      _type: "instagram-post-grid",
+      blockProps: { heading: "Follow us" },
+      dataSource: { type: "instagram_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.blockProps?.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(out.blockProps?.heading).toBe("Follow us"); // authored prop untouched
+    // No `data` key ever created for a chai-shaped block (write stays on the blockProps path).
+    expect(out.data).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("events: a block_ref symbolic source still expands into CHAI `_type` heroes with blockProps", async () => {
+    const occurrences: EventFeedItem[] = [
+      { ...baseEvent, id: "123", occurrence_id: "123:0" },
+      { ...baseEvent, id: "456", occurrence_id: "456:0", title: "Autumn Gala" },
+    ];
+    const fetcher = routeFetcher([["/feeds/events", { data: occurrences, meta: null }]]);
+    const block = wireBlock(
+      "heroes/hero-event-registration",
+      { type: "events_feed", limit: 6 },
+      { heading: "Upcoming Events" } // authored placeholder — must NOT survive the mint
+    );
+    const out = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out).toHaveLength(2);
+    for (const b of out) {
+      // Mint stays chai-shaped (renders via normalizeBlocks passthrough) — NOT block_ref/data.
+      expect(b._type).toBe("hero-event-registration");
+      expect(b.block_ref).toBeUndefined();
+      expect(b.data).toBeUndefined();
+      // Exact minimal key set (byte-for-byte lockstep with the Ruby hydrator mint).
+      expect(Object.keys(b).sort()).toEqual(["_feedMeta", "_id", "_parent", "_type", "blockProps"]);
+    }
+    // Occurrence props on blockProps (not the authored placeholder), heroes rendered from real data.
+    expect(out[0].blockProps?.heading).toBe("Summer Kickoff Party");
+    expect(out[1].blockProps?.heading).toBe("Autumn Gala");
   });
 });

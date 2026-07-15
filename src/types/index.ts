@@ -7,8 +7,29 @@ import type { ReactNode } from "react";
 export interface Block {
   /** Unique block identifier */
   _id: string;
-  /** Block type - maps to component name from @opensite/ui */
+  /**
+   * Chai runtime block type — maps to the component name in the @opensite/ui registry.
+   * Present on chai-shaped blocks. AI-generated wire blocks carry `block_ref`/`block_name`
+   * instead (see below) and are normalized to `_type` lazily by the customer-sites renderer
+   * (`chai_pages.tsx` `normalizeBlocks`), so at the data layer `_type` may be absent at runtime.
+   * The data layer derives the component id with `blockType()` (FEED_CONTRACT §2/§4).
+   */
   _type: string;
+  /**
+   * AI-generated wire block reference, e.g. `"gallery/instagram-post-grid"` (FEED_CONTRACT §2).
+   * Present on octane-generated / persisted-verbatim pages instead of `_type`. The component id
+   * is the segment after the last `/`. Lockstep with dashtrack-ai `Feeds::Hydrator#ref_component_id`
+   * (`app/services/feeds/hydrator.rb`) and customer-sites `normalizeBlocks`.
+   */
+  block_ref?: string;
+  /** AI-generated wire block name (fallback for `block_ref`); same `split("/").pop()` id rule. */
+  block_name?: string;
+  /**
+   * AI-generated wire props container (FEED_CONTRACT §2). The customer-sites renderer rebuilds
+   * `blockProps` from `data` ONLY, so hydration must write the bind target into `data` (not
+   * `blockProps`) for `block_ref`/`block_name`-shaped blocks — see `resolveBlocks`.
+   */
+  data?: Record<string, unknown>;
   /** Optional human-readable name */
   _name?: string;
   /** Parent block ID (null for root blocks) */
