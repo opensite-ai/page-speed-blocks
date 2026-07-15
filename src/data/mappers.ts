@@ -3,6 +3,10 @@ import type {
   BlogFeedDetailItem,
   BlogPostItem,
   BlogPostDetail,
+  EventFeedItem,
+  EventHeroAction,
+  EventHeroProps,
+  EventHeroStat,
   InstagramFeedItem,
   InstagramPostItem,
   ReviewFeedItem,
@@ -31,6 +35,31 @@ export function formatFeedDate(iso?: string | null): string | undefined {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return DATE_FORMATTER.format(parsed);
+}
+
+/**
+ * Truncate `text` to at most `maxCodepoints`, cutting at the last word boundary and appending an
+ * ellipsis (U+2026). Shared by the review-title (§4.1c) and event heading/description (§4.1d)
+ * rules — the algorithm is byte-identical to the Ruby reference (`[[:space:]]` collapse), and it
+ * MUST stay in lockstep across the two codebases (the Unicode-whitespace + codepoint behaviour has
+ * been review-flagged twice). The exact rule (identical words in both codebases):
+ *   1. collapse runs of Unicode whitespace to a single ASCII space (JS `/\s+/gu` ↔ Ruby
+ *      `[[:space:]]+`; NBSP U+00A0 and ideographic space U+3000 collapse identically)
+ *   2. trim Unicode whitespace from both ends
+ *   3. length is measured in CODEPOINTS (`Array.from`), never UTF-16 code units — surrogate-pair
+ *      emoji are never split
+ *   4. `<= maxCodepoints` → return the collapsed/trimmed string as-is (no ellipsis)
+ *   5. else take the first `maxCodepoints` codepoints, cut back to the last ASCII space when one
+ *      is present in the window, right-trim, and append `…`
+ */
+export function truncateAtWordBoundary(text: string, maxCodepoints: number): string {
+  const normalized = text.replace(/\s+/gu, " ").trim();
+  const codepoints = Array.from(normalized);
+  if (codepoints.length <= maxCodepoints) return normalized;
+  const window = codepoints.slice(0, maxCodepoints).join("");
+  const lastSpace = window.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? window.slice(0, lastSpace) : window;
+  return `${cut.replace(/\s+$/u, "")}…`;
 }
 
 /**
@@ -194,16 +223,11 @@ const REVIEW_TITLE_MAX_LENGTH = 40;
 /**
  * Derive a `ReviewItem.title` from review `content` (§4.1c): whitespace-collapsed and, when
  * longer than ~40 codepoints, cut at the last word boundary within the window with an ellipsis
- * appended. Codepoint-based (never splits surrogate-pair emoji), mirroring the IG alt rule.
+ * appended. Delegates to the shared {@link truncateAtWordBoundary} (lockstep with the IG alt and
+ * event heading/description rules, and with the dashtrack-ai `#review_title` reference).
  */
 function reviewTitle(content: string): string {
-  const normalized = content.replace(/\s+/gu, " ").trim();
-  const codepoints = Array.from(normalized);
-  if (codepoints.length <= REVIEW_TITLE_MAX_LENGTH) return normalized;
-  const window = codepoints.slice(0, REVIEW_TITLE_MAX_LENGTH).join("");
-  const lastSpace = window.lastIndexOf(" ");
-  const cut = lastSpace > 0 ? window.slice(0, lastSpace) : window;
-  return `${cut.replace(/\s+$/u, "")}…`;
+  return truncateAtWordBoundary(content, REVIEW_TITLE_MAX_LENGTH);
 }
 
 /**
@@ -259,4 +283,149 @@ export function mapSocialTestimonialItem(item: ReviewFeedItem): SocialTestimonia
   const linkConfig = reviewLinkConfig(item);
   if (linkConfig) result.linkConfig = linkConfig;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Events feed (FEED_CONTRACT §3.9 / §4.1d) — client-side mirror of the dashtrack-ai
+// `Feeds::Hydrator` events expansion. Keep the mapping table, truncation caps, date/time
+// formats, and stat/action rules in lockstep with §4.1d and the Ruby reference.
+// ---------------------------------------------------------------------------
+
+/** Max heading length in codepoints (§4.1d). */
+const EVENT_HEADING_MAX_LENGTH = 50;
+/** Max description length in codepoints (§4.1d). */
+const EVENT_DESCRIPTION_MAX_LENGTH = 130;
+/** Constraint caps enforced in the mapper (§4.1d). */
+const EVENT_MAX_STATS = 4;
+const EVENT_MAX_ACTIONS = 2;
+
+/**
+ * Format an ISO-8601 instant (which already carries the event's offset) in the event's IANA
+ * timezone. `timezone` is applied so the rendered wall-clock date/time matches §3.9's intent
+ * ("tz-naive columns + timezone column applied"). Falls back to UTC when the timezone is
+ * missing or not recognised by the runtime (never throws). Returns `undefined` for an
+ * unparseable timestamp (never a fabricated date).
+ */
+function formatInEventZone(
+  iso: string,
+  options: Intl.DateTimeFormatOptions,
+  timezone?: string | null
+): string | undefined {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  const tz = timezone && timezone.length > 0 ? timezone : "UTC";
+  let formatted: string;
+  try {
+    formatted = new Intl.DateTimeFormat("en-US", { ...options, timeZone: tz }).format(parsed);
+  } catch {
+    // Unknown/invalid IANA zone → degrade to UTC rather than throw.
+    formatted = new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(parsed);
+  }
+  // Normalise the narrow / regular no-break space that some ICU builds insert before AM/PM
+  // (U+202F / U+00A0) to an ASCII space, so the output is byte-identical across Node/ICU
+  // versions AND with Ruby's `strftime` "%-l:%M %p" (which uses an ASCII space) — lockstep.
+  return formatted.replace(/[\u202f\u00a0]/g, " ");
+}
+
+/**
+ * Short date badge from `starts_at`, e.g. `"JUL 18"` (§4.1d `badgeText`). Uppercased
+ * `"%b %-d"` in the event timezone. Returns `undefined` for an unparseable timestamp.
+ */
+function eventBadgeText(iso: string, timezone?: string | null): string | undefined {
+  const formatted = formatInEventZone(
+    iso,
+    { month: "short", day: "numeric" },
+    timezone
+  );
+  return formatted ? formatted.toUpperCase() : undefined;
+}
+
+/**
+ * Formatted occurrence datetime `"%b %-d, %Y · %-l:%M %p"` in the event timezone (§4.1d
+ * `locationLabel`), e.g. `"Jul 18, 2026 · 7:00 PM"`. The date and time halves are formatted
+ * separately so the ` · ` separator is exact (Intl would otherwise use a locale comma). Returns
+ * `undefined` for an unparseable timestamp.
+ */
+function eventDateTimeLabel(iso: string, timezone?: string | null): string | undefined {
+  const datePart = formatInEventZone(
+    iso,
+    { month: "short", day: "numeric", year: "numeric" },
+    timezone
+  );
+  const timePart = formatInEventZone(
+    iso,
+    { hour: "numeric", minute: "2-digit", hour12: true },
+    timezone
+  );
+  if (!datePart || !timePart) return undefined;
+  return `${datePart} · ${timePart}`;
+}
+
+/** First non-blank value among the candidates (Unicode-whitespace aware); else `undefined`. */
+function firstReal(...candidates: Array<string | null | undefined>): string | undefined {
+  for (const candidate of candidates) {
+    if (candidate && candidate.replace(/\s+/gu, "").length > 0) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Map ONE event occurrence (wire `EventFeedItem`, §3.9) to `hero-event-registration` blockProps
+ * (`EventHeroProps`, §4.1d). Client-side mirror of the dashtrack-ai `Feeds::Hydrator` events
+ * expansion — keep in lockstep with the §4.1d mapping table.
+ *
+ * Rules (never fabricate; omit absent regions — the block null-guards every one):
+ *   - `heading` = `title` truncated ≤ 50 codepoints at a word boundary.
+ *   - `description` = `description` truncated ≤ 130 codepoints; OMITTED when blank.
+ *   - `badgeText` = short date badge (`"JUL 18"`) from `starts_at` in the event tz.
+ *   - `locationLabel` = formatted occurrence datetime in the event tz.
+ *   - `locationSublabel` = `location_name` or `custom_address` (whichever real); omitted when neither.
+ *   - `image` = `{ src: image_url, alt: title }` ONLY when `image_url` present.
+ *   - `stats` = REAL only (`price_from` → "From"; `recurring_summary` → "Schedule"); the array is
+ *     OMITTED entirely when no real stat exists (the registry `minItems: 1` is an AI-authoring
+ *     constraint, not a runtime one). Capped at 4.
+ *   - `actions` = `[{ label: "Register", href: registration_url }]` ONLY when present; capped at 2.
+ *
+ * The block minting (unique `_id`, inherited `_parent`, `_type`, `_feedMeta`) is the resolver's
+ * job (`resolveEventsFeed`) — this stays a pure item→props mapper per repo convention.
+ */
+export function mapEventFeedItem(item: EventFeedItem): EventHeroProps {
+  const props: EventHeroProps = {
+    heading: truncateAtWordBoundary(item.title, EVENT_HEADING_MAX_LENGTH),
+  };
+
+  const description = truncateAtWordBoundary(
+    item.description ?? "",
+    EVENT_DESCRIPTION_MAX_LENGTH
+  );
+  if (description.length > 0) props.description = description;
+
+  const badgeText = eventBadgeText(item.starts_at, item.timezone);
+  if (badgeText) props.badgeText = badgeText;
+
+  const locationLabel = eventDateTimeLabel(item.starts_at, item.timezone);
+  if (locationLabel) props.locationLabel = locationLabel;
+
+  const sublabel = firstReal(item.location_name, item.custom_address);
+  if (sublabel) props.locationSublabel = sublabel;
+
+  if (item.image_url) props.image = { src: item.image_url, alt: item.title };
+
+  // REAL stats only — price first, then schedule; omit the whole array when neither exists.
+  const stats: EventHeroStat[] = [];
+  if (item.price_from) stats.push({ value: `$${item.price_from}`, label: "From" });
+  if (item.recurring_summary) {
+    stats.push({ value: item.recurring_summary, label: "Schedule" });
+  }
+  if (stats.length > 0) props.stats = stats.slice(0, EVENT_MAX_STATS);
+
+  // Registration CTA only when the event links out (use_external_booking_site server-side).
+  if (item.registration_url) {
+    const actions: EventHeroAction[] = [
+      { label: "Register", href: item.registration_url },
+    ];
+    props.actions = actions.slice(0, EVENT_MAX_ACTIONS);
+  }
+
+  return props;
 }

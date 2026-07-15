@@ -3,6 +3,8 @@ import type {
   BlogFeedParams,
   BlogPostItem,
   DataSource,
+  EventFeedItem,
+  EventFeedParams,
   FeedMeta,
   FeedResponseMeta,
   FeedSourceContext,
@@ -18,6 +20,7 @@ import { createFeedClient } from "./feed-client.js";
 import {
   mapBlogFeedDetail,
   mapBlogFeedItem,
+  mapEventFeedItem,
   mapInstagramFeedItem,
   mapReviewItem,
   mapSocialTestimonialItem,
@@ -84,17 +87,76 @@ const GALLERY_BLOCK_TYPES = new Set([
   "carousel-gradient-text",
 ]);
 
+// ---------------------------------------------------------------------------
+// Dual block shapes (FEED_CONTRACT §2 / §4). Two shapes coexist and are NEVER normalized before
+// this pass runs (the client-side `normalizeBlocks` in customer-sites runs AFTER `resolveBlocks`):
+//   • Chai runtime shape  = { _type, _id, blockProps }        (dt-cms / already-normalized pages)
+//   • AI wire shape       = { block_ref | block_name, data }  (octane-generated, persisted verbatim)
+// customer-sites `normalizeBlocks` rebuilds `blockProps` from `data` ONLY, so for wire-shaped
+// blocks the hydrated props MUST land in `data` or they are silently discarded. Both the block-type
+// derivation and the write-container choice are kept byte-for-byte in LOCKSTEP with the dashtrack-ai
+// reference `Feeds::Hydrator` (`app/services/feeds/hydrator.rb` — `#block_type`/`#ref_component_id`
+// and `#props_hash`/`#write_target`); diverging here splits first-load (Ruby) from SPA-nav (this TS).
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive the component-registry id for a block. Chai blocks carry `_type`; AI wire blocks carry
+ * `block_ref`/`block_name` (e.g. `"gallery/instagram-post-grid"`) — take the segment after the
+ * last `/`, no-opping safely when there is no `/` (mirrors customer-sites `chai_pages.tsx`
+ * `normalizeBlocks` and the dashtrack-ai `Feeds::Hydrator#ref_component_id`). Used everywhere the
+ * resolver dispatches on block type (bind-target lookup, gallery/review/social branches).
+ */
+export function blockType(block: Block): string {
+  if (block._type) return block._type;
+  const ref = block.block_ref ?? block.block_name;
+  if (ref) {
+    const segment = ref.split("/").pop();
+    if (segment) return segment;
+  }
+  return "";
+}
+
+/**
+ * True when the block is AI-wire-shaped (`block_ref`/`block_name` present, no `_type`) and its
+ * hydrated props must be written into `data` rather than `blockProps`. Chai-shaped blocks (with
+ * `_type`) stay on the `blockProps` path. Lockstep with hydrator.rb `#props_hash` shape branch.
+ */
+function isBlockRefShaped(block: Block): boolean {
+  if (block._type) return false;
+  return Boolean(block.block_ref ?? block.block_name);
+}
+
+/**
+ * A shallow copy of the block's hydration write container: `data` for wire-shaped blocks,
+ * `blockProps` for chai-shaped blocks. Callers write the bind target (and only the bind target)
+ * into it, then pass it to `withContainer` (§2.3 rule 2 — every other authored prop is untouched).
+ */
+function writeContainer(block: Block): Record<string, unknown> {
+  return isBlockRefShaped(block)
+    ? { ...(block.data ?? {}) }
+    : { ...(block.blockProps ?? {}) };
+}
+
+/** Return a copy of the block with the hydrated container written back to the correct key. */
+function withContainer(block: Block, container: Record<string, unknown>): Block {
+  return isBlockRefShaped(block)
+    ? { ...block, data: container }
+    : { ...block, blockProps: container };
+}
+
 /**
  * Resolve the bind target for a block: explicit `bindTo` → single-bind default → per-block
  * array default → `"posts"`. (Single-bind and array-bind block types are disjoint, so the
- * ordering of the two default maps only matters for clarity.)
+ * ordering of the two default maps only matters for clarity.) The type key is derived via
+ * `blockType` so `block_ref`/`block_name`-shaped blocks hit the same maps as chai blocks.
  */
 export function resolveBindTarget(block: Block): string {
   const explicit = block.dataSource?.bindTo;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const type = blockType(block);
   return (
-    SINGLE_BIND_TARGETS[block._type] ??
-    DEFAULT_BIND_TARGETS[block._type] ??
+    SINGLE_BIND_TARGETS[type] ??
+    DEFAULT_BIND_TARGETS[type] ??
     DEFAULT_BIND_TARGET
   );
 }
@@ -148,28 +210,29 @@ function inlineBlogItems(
   bindTarget: string,
   items: BlogPostItem[]
 ): Block {
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
+  const type = blockType(block);
 
   let finalItems: BlogPostItem[] = items;
-  if (GALLERY_BLOCK_TYPES.has(block._type)) {
+  if (GALLERY_BLOCK_TYPES.has(type)) {
     // Carousel items require a non-null image and a string id (§2.4).
     finalItems = items
       .filter((item) => Boolean(item.image))
       .map((item) => ({ ...item, id: String(item.id) }));
   }
 
-  blockProps[bindTarget] = finalItems;
+  props[bindTarget] = finalItems;
 
   // blog-tech-insights: set featuredPost to the first item when unset (§2.4).
   if (
-    block._type === "blog-tech-insights" &&
-    blockProps.featuredPost == null &&
+    type === "blog-tech-insights" &&
+    props.featuredPost == null &&
     finalItems.length > 0
   ) {
-    blockProps.featuredPost = finalItems[0];
+    props.featuredPost = finalItems[0];
   }
 
-  return { ...block, blockProps };
+  return withContainer(block, props);
 }
 
 /**
@@ -260,10 +323,12 @@ const resolveInstagramFeed: FeedSourceResolver = async ({
     ];
   }
 
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
-  blockProps[bindTarget] = items;
+  const props = writeContainer(block);
+  props[bindTarget] = items;
 
-  return [withFeedMeta({ ...block, blockProps }, okMeta("instagram_feed", response.meta))];
+  return [
+    withFeedMeta(withContainer(block, props), okMeta("instagram_feed", response.meta)),
+  ];
 };
 
 /** Map a symbolic `testimonials_feed` `dataSource` to `FeedClient` review list params (§3.8). */
@@ -309,16 +374,17 @@ function inlineTestimonialItems(
   bindTarget: string,
   wireItems: ReviewFeedItem[]
 ): Block | null {
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
+  const type = blockType(block);
 
   // Single-bind: bind the first item as a single OBJECT (base TestimonialItem), never an array.
-  if (block._type in SINGLE_BIND_TARGETS) {
-    blockProps[bindTarget] = mapTestimonialItem(wireItems[0]);
-    return { ...block, blockProps };
+  if (type in SINGLE_BIND_TARGETS) {
+    props[bindTarget] = mapTestimonialItem(wireItems[0]);
+    return withContainer(block, props);
   }
 
   let items: unknown[];
-  if (REVIEW_ITEM_BLOCK_TYPES.has(block._type)) {
+  if (REVIEW_ITEM_BLOCK_TYPES.has(type)) {
     // filter_map mirror: `mapReviewItem` returns null for items lacking a numeric rating,
     // dropping them (rating is REQUIRED on ReviewItem — §2.3 rule 5, lockstep hydrator.rb).
     const reviewItems = wireItems
@@ -327,14 +393,14 @@ function inlineTestimonialItems(
     // All items dropped → nothing to render → honest empty state (handled by the caller).
     if (reviewItems.length === 0) return null;
     items = reviewItems;
-  } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(block._type)) {
+  } else if (SOCIAL_TESTIMONIAL_BLOCK_TYPES.has(type)) {
     items = wireItems.map(mapSocialTestimonialItem);
   } else {
     items = wireItems.map(mapTestimonialItem);
   }
 
-  blockProps[bindTarget] = items;
-  return { ...block, blockProps };
+  props[bindTarget] = items;
+  return withContainer(block, props);
 }
 
 /**
@@ -390,6 +456,139 @@ const resolveReviewsFeed: FeedSourceResolver = async ({
   }
 
   return [withFeedMeta(inlined, okMeta("testimonials_feed", response.meta))];
+};
+
+// ---------------------------------------------------------------------------
+// Events feed (FEED_CONTRACT §3.9 / §4.1d, D6) — the FIRST expanding source: ONE symbolic block
+// hydrates into N `hero-event-registration` block instances (one per occurrence). Keep the
+// expansion mechanics, `_id` scheme, and `_feedMeta` contract in lockstep with the dashtrack-ai
+// `Feeds::Hydrator` events expansion.
+// ---------------------------------------------------------------------------
+
+/** The block type every expanded event occurrence is minted as (§4.1d). */
+const HERO_EVENT_BLOCK_TYPE = "hero-event-registration";
+/** Default number of event heroes to render when `dataSource.limit` is unset (§4.1d). */
+const EVENT_LIMIT_DEFAULT = 6;
+/** Hard cap on rendered event heroes — N-hero pages are visually heavy (§4.1d). */
+const EVENT_LIMIT_MAX = 12;
+
+/**
+ * Resolve the number of event heroes to render: `dataSource.limit` when a positive number, else
+ * the default (6); always capped at 12 (§4.1d). This doubles as the fetch `per_page` so we never
+ * pull occurrences we won't render.
+ */
+function eventLimit(source: DataSource): number {
+  const raw = typeof source.limit === "number" ? Math.trunc(source.limit) : NaN;
+  const base = Number.isFinite(raw) && raw > 0 ? raw : EVENT_LIMIT_DEFAULT;
+  return Math.min(base, EVENT_LIMIT_MAX);
+}
+
+/**
+ * Map a symbolic `events_feed` `dataSource` to `FeedClient` event list params (§3.9). `per_page`
+ * is set to the render limit (default 6, hard cap 12) so the request and the expansion align.
+ * `upcomingOnly` has no §3.9 wire param (the server's default window starts at "now"), so it is
+ * intentionally not forwarded here.
+ */
+function dataSourceToEventParams(source: DataSource): EventFeedParams {
+  const params: EventFeedParams = { perPage: eventLimit(source) };
+  if (typeof source.startDate === "string") params.startDate = source.startDate;
+  if (typeof source.endDate === "string") params.endDate = source.endDate;
+  if (Array.isArray(source.locationIds)) {
+    params.locationIds = source.locationIds.filter(
+      (id): id is number | string =>
+        typeof id === "number" || typeof id === "string"
+    );
+  }
+  return params;
+}
+
+/**
+ * Mint the unique `_id` for an expanded event block (§4.1d):
+ * `"<symbolic_id>__ev_<event_id>_<occurrence_index>"`. The occurrence index is parsed from the
+ * wire `occurrence_id` (`"<event_id>:<index>"`); if it is malformed (no `:`), the array position
+ * is used as a deterministic fallback so the `_id` is always globally unique (duplicate `_id`s
+ * corrupt React keys and child lookups — the primary expansion failure mode).
+ */
+function expandedEventId(sourceId: string, item: EventFeedItem, position: number): string {
+  const occurrenceId = item.occurrence_id ?? "";
+  const colon = occurrenceId.lastIndexOf(":");
+  const index = colon >= 0 ? occurrenceId.slice(colon + 1) : String(position);
+  return `${sourceId}__ev_${item.id}_${index}`;
+}
+
+/**
+ * Mint one `hero-event-registration` block from an event occurrence. §4.1d expansion mechanics
+ * enumerate the expanded block's fields EXACTLY — `{ _id, _parent, _type, blockProps, _feedMeta }`
+ * and NOTHING else. This is a minimal mint, byte-for-byte lockstep with the dashtrack-ai hydrator
+ * (`Feeds::Hydrator#mint_event_block`), which builds the identical minimal hash. Authored
+ * block-level presentation on the symbolic source (styles, tag, `_name`, `styles_attrs`,
+ * backgroundImage, content, src, link, etc.) is DELIBERATELY DROPPED — it is NOT contract-
+ * enumerated and must not leak onto the concrete heroes (that would break lockstep parity).
+ *
+ * `_parent` carries the symbolic block's inherited value so the heroes render as siblings in the
+ * source's slot (or as roots if the source was a root). NOTE: for a root source blocks emits
+ * `_parent: null` while the Ruby hydrator omits the key (`unless parent.nil?`); both resolve to
+ * root (getRootBlocks treats null/absent identically) and `_parent` is contract-enumerated, so
+ * this residual is benign. The `dataSource` is DROPPED: expanded heroes are concrete blocks, not
+ * symbolic sources, and re-running `resolveBlocks` must not re-expand them. `blockProps` are the
+ * fresh mapped occurrence props (§4.1d) — NOT merged with the symbolic block's authored props: for
+ * an expanding source there is no single bind target, and each hero must show ONLY real occurrence
+ * data with absent regions collapsing (contract "omit absent"), so `bindTarget` is ignored.
+ */
+function mintEventBlock(sourceBlock: Block, item: EventFeedItem, position: number): Block {
+  // Mint EXACTLY the §4.1d-enumerated fields; do NOT spread the symbolic block.
+  const eventBlock: Block = {
+    _id: expandedEventId(sourceBlock._id, item, position),
+    _type: HERO_EVENT_BLOCK_TYPE,
+    _parent: sourceBlock._parent ?? null,
+    blockProps: { ...mapEventFeedItem(item) },
+  };
+  return withFeedMeta(eventBlock, {
+    status: "ok",
+    source: "events_feed",
+    expandedFrom: sourceBlock._id,
+    resolvedAt: nowIso(),
+  });
+}
+
+/**
+ * Built-in `events_feed` resolver (FEED_CONTRACT §3.9 / §4.1d, D6). Fetches the occurrence list
+ * and EXPANDS into N `hero-event-registration` blocks (`limit` default 6, hard cap 12), each
+ * carrying `{status:'ok', source:'events_feed', expandedFrom:<symbolic_id>}` meta. On empty
+ * (`no_upcoming_events`) or error (`upstream_error`) the ORIGINAL symbolic block stays in place
+ * UNEXPANDED with the usual `_feedMeta`, so the empty / error renderers work unchanged (§2.3
+ * rule 5 — empty / error are first-class and there is no wrapper-block concept).
+ */
+const resolveEventsFeed: FeedSourceResolver = async ({ block, dataSource, client }) => {
+  const response = await client.listEvents(dataSourceToEventParams(dataSource));
+
+  if (response.error) {
+    return [
+      withFeedMeta(block, {
+        status: "error",
+        reason: "upstream_error",
+        source: "events_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  // Cap the rendered occurrences (the server already limits via per_page; this is the belt-and-
+  // suspenders render cap — default 6, hard cap 12).
+  const occurrences = response.data.slice(0, eventLimit(dataSource));
+
+  if (occurrences.length === 0) {
+    return [
+      withFeedMeta(block, {
+        status: "empty",
+        reason: "no_upcoming_events",
+        source: "events_feed",
+        resolvedAt: nowIso(),
+      }),
+    ];
+  }
+
+  return occurrences.map((item, index) => mintEventBlock(block, item, index));
 };
 
 /** Extract a slug from the last non-empty path segment. */
@@ -465,19 +664,19 @@ const resolveBlogPost: FeedSourceResolver = async ({
   }
 
   const detail = mapBlogFeedDetail(response.data);
-  const blockProps: Record<string, unknown> = { ...(block.blockProps ?? {}) };
+  const props = writeContainer(block);
   // §4.3 detail mapping — these are the dynamic content props for the article block.
-  blockProps.title = detail.title;
-  blockProps.markdownString = detail.markdownString;
-  blockProps.author = detail.author;
-  blockProps.date = detail.date;
-  blockProps.image = detail.image;
-  blockProps.imageAlt = detail.imageAlt;
-  blockProps.tags = detail.tags;
-  blockProps.articles = detail.articles;
+  props.title = detail.title;
+  props.markdownString = detail.markdownString;
+  props.author = detail.author;
+  props.date = detail.date;
+  props.image = detail.image;
+  props.imageAlt = detail.imageAlt;
+  props.tags = detail.tags;
+  props.articles = detail.articles;
 
   return [
-    withFeedMeta({ ...block, blockProps }, {
+    withFeedMeta(withContainer(block, props), {
       status: "ok",
       source: "blog_post",
       resolvedAt: nowIso(),
@@ -485,12 +684,16 @@ const resolveBlogPost: FeedSourceResolver = async ({
   ];
 };
 
-/** Built-in resolvers keyed by source type. Phase 1: blog; Phase 2: reviews; Phase 3: instagram. */
+/**
+ * Built-in resolvers keyed by source type. Phase 1: blog; Phase 2: reviews; Phase 3: instagram;
+ * Phase 4: events (the first EXPANDING source — one block → N `hero-event-registration` blocks).
+ */
 const BUILT_IN_SOURCES: Record<string, FeedSourceResolver> = {
   blog_feed: resolveBlogFeed,
   blog_post: resolveBlogPost,
   instagram_feed: resolveInstagramFeed,
   testimonials_feed: resolveReviewsFeed,
+  events_feed: resolveEventsFeed,
 };
 
 /**

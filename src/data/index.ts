@@ -18,7 +18,7 @@ export {
   DEFAULT_BIND_TARGET,
 } from "./resolve-blocks.js";
 
-// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 / §4.1b / §4.1c hydrator tables).
+// Wire → prop mappers (client-side mirror of the §4.1 / §4.3 / §4.1b / §4.1c / §4.1d hydrator tables).
 export {
   mapBlogFeedItem,
   mapBlogFeedDetail,
@@ -26,8 +26,10 @@ export {
   mapTestimonialItem,
   mapReviewItem,
   mapSocialTestimonialItem,
+  mapEventFeedItem,
   platformLabel,
   formatFeedDate,
+  truncateAtWordBoundary,
 } from "./mappers.js";
 
 // Reserved renderer keys for dynamic-block affordances (FEED_CONTRACT §7.3).
@@ -59,6 +61,12 @@ export type {
   TestimonialItem,
   ReviewItem,
   SocialTestimonialItem,
+  EventFeedItem,
+  EventFeedParams,
+  EventHeroProps,
+  EventHeroStat,
+  EventHeroAction,
+  EventHeroImage,
   CreateFeedClientOptions,
   FeedClient,
   ResolveBlocksOptions,

@@ -9,6 +9,8 @@ import type {
   Block,
   BlogFeedItem,
   BlogFeedDetailItem,
+  DataSource,
+  EventFeedItem,
   FeedSourceResolver,
   InstagramFeedItem,
   ReviewFeedItem,
@@ -727,5 +729,462 @@ describe("resolveBlocks — one-to-many expansion (D6)", () => {
     // 1 static + 3 expanded = 4
     expect(out).toHaveLength(4);
     expect(out.map((b) => b._id)).toEqual(["keep", "evt-1", "evt-2", "evt-3"]);
+  });
+});
+
+describe("resolveBlocks — events_feed expansion (§3.9 / §4.1d, D6, built-in resolver)", () => {
+  const baseEvent: EventFeedItem = {
+    id: "123",
+    occurrence_id: "123:0",
+    title: "Summer Kickoff Party",
+    description: "Join us for food, drinks, and live music.",
+    starts_at: "2026-07-18T19:00:00-07:00",
+    ends_at: "2026-07-18T22:00:00-07:00",
+    timezone: "America/Phoenix",
+    location_name: "The Rooftop",
+    custom_address: null,
+    image_url: "https://cdn.ing/events/1.jpg",
+    registration_url: "https://tickets.example.com/123",
+    booking_behavior: "external",
+    price_from: "25.00",
+    recurring_summary: null,
+  };
+
+  // Two occurrences of event 123 + one of event 456 → three distinct heroes.
+  const occurrences: EventFeedItem[] = [
+    { ...baseEvent, id: "123", occurrence_id: "123:0" },
+    { ...baseEvent, id: "123", occurrence_id: "123:1", starts_at: "2026-07-25T19:00:00-07:00" },
+    { ...baseEvent, id: "456", occurrence_id: "456:0", title: "Autumn Gala" },
+  ];
+
+  const eventsFetcher = (data: EventFeedItem[], meta: unknown = null) =>
+    routeFetcher([["/feeds/events", { data, meta }]]);
+
+  const symbolicBlock = (overrides: Partial<Block> = {}): Block => ({
+    _id: "slot_events",
+    _type: "hero-event-registration",
+    _parent: "section_1",
+    blockProps: { heading: "Upcoming Events" }, // authored placeholder — must NOT survive
+    dataSource: { type: "events_feed", limit: 6 },
+    ...overrides,
+  });
+
+  it("expands ONE symbolic block into N hero-event-registration instances", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out).toHaveLength(3);
+    for (const b of out) expect(b._type).toBe("hero-event-registration");
+  });
+
+  it("mints unique, deterministic _ids (<source>__ev_<event>_<occurrence>) and inherits _parent", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out.map((b) => b._id)).toEqual([
+      "slot_events__ev_123_0",
+      "slot_events__ev_123_1",
+      "slot_events__ev_456_0",
+    ]);
+    // Uniqueness (duplicate _id = React key collision + wrong child lookups).
+    expect(new Set(out.map((b) => b._id)).size).toBe(out.length);
+    // _parent inherited from the symbolic block so heroes render as siblings in its slot.
+    for (const b of out) expect(b._parent).toBe("section_1");
+  });
+
+  it("carries ok _feedMeta with expandedFrom on every expanded block", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    for (const b of out) {
+      expect(b._feedMeta).toMatchObject({
+        status: "ok",
+        source: "events_feed",
+        expandedFrom: "slot_events",
+      });
+      expect(b._feedMeta?.resolvedAt).toBeTruthy();
+    }
+  });
+
+  it("uses the mapped occurrence props (NOT the authored placeholder) and DROPS dataSource", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    // Authored heading "Upcoming Events" is replaced by the event title.
+    expect(out[0].blockProps?.heading).toBe("Summer Kickoff Party");
+    expect(out[2].blockProps?.heading).toBe("Autumn Gala");
+    expect(out[0].blockProps).toMatchObject({
+      badgeText: "JUL 18",
+      locationLabel: "Jul 18, 2026 · 7:00 PM",
+      locationSublabel: "The Rooftop",
+      image: { src: "https://cdn.ing/events/1.jpg", alt: "Summer Kickoff Party" },
+      stats: [{ value: "$25.00", label: "From" }],
+      actions: [{ label: "Register", href: "https://tickets.example.com/123" }],
+    });
+    // dataSource dropped so a re-resolve never re-expands the hero.
+    for (const b of out) expect(b.dataSource).toBeUndefined();
+  });
+
+  it("mints a MINIMAL block (§4.1d): EXACT key set, no inherited authored block-level fields", async () => {
+    // Symbolic source carrying block-level presentation that must NOT survive expansion.
+    const out = await resolveBlocks(
+      [
+        symbolicBlock({
+          _name: "Events Hero",
+          tag: "section",
+          styles: "bg-slate-900 py-24",
+          styles_attrs: { role: "region" },
+          backgroundImage: "https://cdn.ing/bg.jpg",
+          content: "authored copy",
+          src: "https://cdn.ing/authored.jpg",
+          alt: "authored alt",
+          link: { href: "/authored" },
+        }),
+      ],
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(occurrences) }
+    );
+    // EXACTLY the contract-enumerated fields — byte-for-byte lockstep with the Ruby hydrator.
+    for (const b of out) {
+      expect(Object.keys(b).sort()).toEqual([
+        "_feedMeta",
+        "_id",
+        "_parent",
+        "_type",
+        "blockProps",
+      ]);
+    }
+    // No authored block-level field (nor dataSource) leaked onto the concrete heroes.
+    const first = out[0] as Record<string, unknown>;
+    expect(first.dataSource).toBeUndefined();
+    expect(first._name).toBeUndefined();
+    expect(first.tag).toBeUndefined();
+    expect(first.styles).toBeUndefined();
+    expect(first.styles_attrs).toBeUndefined();
+    expect(first.backgroundImage).toBeUndefined();
+    expect(first.content).toBeUndefined();
+    expect(first.src).toBeUndefined();
+    expect(first.alt).toBeUndefined();
+    expect(first.link).toBeUndefined();
+    // _parent still carries the inherited value (present, not dropped).
+    expect(first._parent).toBe("section_1");
+  });
+
+  it("places expanded heroes contiguously in the source's slot, siblings preserved", async () => {
+    const input: Block[] = [
+      { _id: "hdr", _type: "Box", content: "header" },
+      symbolicBlock(),
+      { _id: "ftr", _type: "Box", content: "footer" },
+    ];
+    const out = await resolveBlocks(input, {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher(occurrences),
+    });
+    expect(out.map((b) => b._id)).toEqual([
+      "hdr",
+      "slot_events__ev_123_0",
+      "slot_events__ev_123_1",
+      "slot_events__ev_456_0",
+      "ftr",
+    ]);
+  });
+
+  it("EMPTY (no occurrences) → the ORIGINAL symbolic block stays UNEXPANDED with empty meta", async () => {
+    const block = symbolicBlock();
+    const out = await resolveBlocks([block], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: eventsFetcher([]),
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]._id).toBe("slot_events"); // not expanded
+    expect(out[0]._feedMeta).toMatchObject({
+      status: "empty",
+      reason: "no_upcoming_events",
+      source: "events_feed",
+    });
+    // dataSource retained on the unexpanded block (so the empty renderer / re-query works).
+    expect(out[0].dataSource).toEqual(block.dataSource);
+    // Authored props untouched on the empty path.
+    expect(out[0].blockProps?.heading).toBe("Upcoming Events");
+  });
+
+  it("ERROR (fetch failure) → the ORIGINAL block stays UNEXPANDED with error meta", async () => {
+    const out = await resolveBlocks([symbolicBlock()], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher: routeFetcher([], true),
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]._id).toBe("slot_events");
+    expect(out[0]._feedMeta).toMatchObject({
+      status: "error",
+      reason: "upstream_error",
+      source: "events_feed",
+    });
+  });
+
+  it("caps the render count at the limit default (6) even if the server returns more", async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      ...baseEvent,
+      id: String(i),
+      occurrence_id: `${i}:0`,
+    }));
+    const out = await resolveBlocks(
+      [symbolicBlock({ dataSource: { type: "events_feed" } })], // no explicit limit
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(many) }
+    );
+    expect(out).toHaveLength(6);
+  });
+
+  it("hard-caps the render count at 12 even when limit is larger", async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      ...baseEvent,
+      id: String(i),
+      occurrence_id: `${i}:0`,
+    }));
+    const out = await resolveBlocks(
+      [symbolicBlock({ dataSource: { type: "events_feed", limit: 20 } })],
+      { baseUrl: BASE, websiteToken: TOKEN, fetcher: eventsFetcher(many) }
+    );
+    expect(out).toHaveLength(12);
+  });
+
+  it("sends per_page (render limit) + start_date/end_date/location_ids[] from the dataSource", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [baseEvent], meta: null });
+    }) as typeof fetch;
+    const block = symbolicBlock({
+      dataSource: {
+        type: "events_feed",
+        limit: 4,
+        startDate: "2026-07-18",
+        endDate: "2026-08-18",
+        locationIds: [1093, 1094],
+      },
+    });
+    await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const query = new URL(calls[0]).searchParams;
+    expect(query.get("per_page")).toBe("4"); // per_page = render limit
+    expect(query.get("start_date")).toBe("2026-07-18");
+    expect(query.get("end_date")).toBe("2026-08-18");
+    expect(query.getAll("location_ids[]")).toEqual(["1093", "1094"]);
+  });
+
+  it("defaults per_page to the limit default (6) when the dataSource sets no limit", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [baseEvent], meta: null });
+    }) as typeof fetch;
+    await resolveBlocks([symbolicBlock({ dataSource: { type: "events_feed" } })], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher,
+    });
+    expect(new URL(calls[0]).searchParams.get("per_page")).toBe("6");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI wire (block_ref / data) shape — Phase 5 shape-fix (FEED_CONTRACT §2 / §4).
+// AI-generated pages arrive as { block_ref, data } (octane-emitted, persisted verbatim). They are
+// normalized to chai { _type, blockProps } LAZILY by customer-sites `normalizeBlocks` AFTER
+// resolveBlocks runs, and that normalizer rebuilds blockProps from `data` ONLY. So the resolver must
+// (a) derive the block TYPE from block_ref (`split("/").pop()`) and (b) write hydrated props into
+// `data`, not `blockProps`, or they are silently discarded. dt-cms chai { _type, blockProps } blocks
+// MUST keep working unchanged. Lockstep with dashtrack-ai `Feeds::Hydrator`
+// (app/services/feeds/hydrator.rb — #block_type/#ref_component_id + #props_hash/#write_target).
+// ---------------------------------------------------------------------------
+describe("resolveBlocks — AI wire (block_ref / data) shape (Phase 5 shape-fix, §2/§4)", () => {
+  /**
+   * Build an AI-wire-shaped block (block_ref + data, NO _type). Cast because `_type` is declared
+   * required on `Block` for the post-normalization render engine, yet is genuinely absent on wire
+   * blocks at the data layer — which is exactly the shape this fix handles.
+   */
+  const wireBlock = (
+    block_ref: string,
+    dataSource: DataSource,
+    data: Record<string, unknown> = {}
+  ): Block => ({ _id: `wire_${block_ref}`, block_ref, data, dataSource }) as Block;
+
+  const igImage: InstagramFeedItem = {
+    id: "17900000000000001",
+    permalink: "https://www.instagram.com/p/ABC123/",
+    caption: "Grand opening!",
+    post_type: "image",
+    posted_at: "2026-07-01T09:00:00Z",
+    like_count: 12,
+    comment_count: 3,
+    view_count: null,
+    play_count: null,
+    location_name: null,
+    files: [{ media_type: "image", image_url: "https://cdn.ing/ig/1.jpg", video_url: null }],
+  };
+  const reviewGoogle: ReviewFeedItem = {
+    id: "9c3b7a10-0000-4000-8000-000000000001",
+    reviewer_name: "Dana P.",
+    rating: 5,
+    content: "Absolutely wonderful — the tasting menu was a highlight of our trip.",
+    platform: "google",
+    time_created: "2026-07-01T09:00:00Z",
+    profile_url: "https://www.google.com/maps/contrib/123",
+    avatar_url: "https://lh3.googleusercontent.com/rot.jpg",
+  };
+  const baseEvent: EventFeedItem = {
+    id: "123",
+    occurrence_id: "123:0",
+    title: "Summer Kickoff Party",
+    description: "Join us for food, drinks, and live music.",
+    starts_at: "2026-07-18T19:00:00-07:00",
+    ends_at: "2026-07-18T22:00:00-07:00",
+    timezone: "America/Phoenix",
+    location_name: "The Rooftop",
+    custom_address: null,
+    image_url: "https://cdn.ing/events/1.jpg",
+    registration_url: "https://tickets.example.com/123",
+    booking_behavior: "external",
+    price_from: "25.00",
+    recurring_summary: null,
+  };
+
+  it("resolveBindTarget derives the type key from block_ref (split('/').pop()), no-op on no-slash", () => {
+    // gallery/instagram-post-grid → instagram-post-grid → items
+    expect(
+      resolveBindTarget(wireBlock("gallery/instagram-post-grid", { type: "instagram_feed" }))
+    ).toBe("items");
+    // testimonials array default via block_ref
+    expect(
+      resolveBindTarget(wireBlock("testimonials/testimonials-marquee", { type: "testimonials_feed" }))
+    ).toBe("testimonials");
+    // single-bind default via block_ref (SINGLE_BIND_TARGETS)
+    expect(
+      resolveBindTarget(wireBlock("testimonials/testimonials-large-quote", { type: "testimonials_feed" }))
+    ).toBe("testimonial");
+    // block_name fallback + no "/" segment no-ops safely (parity with normalizeBlocks:261)
+    expect(
+      resolveBindTarget({
+        _id: "n1",
+        block_name: "blog-related-articles",
+        dataSource: { type: "blog_feed" },
+      } as Block)
+    ).toBe("articles");
+    // unknown wire type → posts fallback (§2.3 rule 6)
+    expect(
+      resolveBindTarget(wireBlock("mystery/unknown-block", { type: "blog_feed" }))
+    ).toBe("posts");
+  });
+
+  it("instagram: hydrated items land in `data.items` (NOT blockProps); type derived from block_ref", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [igImage], meta: null }]]);
+    const block = wireBlock(
+      "gallery/instagram-post-grid",
+      { type: "instagram_feed" },
+      { heading: "Follow us" }
+    );
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.data?.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ id: "17900000000000001", image: "https://cdn.ing/ig/1.jpg" });
+    // authored `data` prop untouched (§2.3 rule 2)
+    expect(out.data?.heading).toBe("Follow us");
+    // NOTHING written to blockProps — normalizeBlocks rebuilds blockProps from `data` and would
+    // discard any blockProps write for a wire block.
+    expect(out.blockProps).toBeUndefined();
+    expect(out.dataSource).toEqual(block.dataSource);
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("testimonials: base TestimonialItem[] lands in `data.testimonials` (NOT blockProps)", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block = wireBlock("testimonials/testimonials-marquee", { type: "testimonials_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.data?.testimonials as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ quote: reviewGoogle.content, author: "Dana P.", rating: 5 });
+    expect(out.blockProps).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("testimonials: ReviewItem[] coercion for a block_ref list-verified block lands in `data.reviews`", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [reviewGoogle], meta: null }]]);
+    const block = wireBlock("testimonials/testimonials-list-verified", { type: "testimonials_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const reviews = out.data?.reviews as Array<Record<string, unknown>>;
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ content: reviewGoogle.content, rating: 5, verified: true });
+    expect(reviews[0]).not.toHaveProperty("quote"); // ReviewItem shape, derived via block_ref type
+    expect(out.blockProps).toBeUndefined();
+  });
+
+  it("blog: mapped posts land in `data` under the block_ref-derived bind target (NOT blockProps)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem], meta: null }]]);
+    // blog/blog-related-articles → blog-related-articles → bind target `articles`
+    const block = wireBlock("blog/blog-related-articles", { type: "blog_feed" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const articles = out.data?.articles as Array<Record<string, unknown>>;
+    expect(articles).toHaveLength(1);
+    expect(articles[0]).toMatchObject({ id: 12, title: "Grand opening" });
+    expect(out.blockProps).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("REGRESSION: a chai `_type`/`blockProps` block still writes blockProps, never `data`", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [igImage], meta: null }]]);
+    const block: Block = {
+      _id: "chai_ig",
+      _type: "instagram-post-grid",
+      blockProps: { heading: "Follow us" },
+      dataSource: { type: "instagram_feed" },
+    };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    const items = out.blockProps?.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(out.blockProps?.heading).toBe("Follow us"); // authored prop untouched
+    // No `data` key ever created for a chai-shaped block (write stays on the blockProps path).
+    expect(out.data).toBeUndefined();
+    expect(out._feedMeta?.status).toBe("ok");
+  });
+
+  it("events: a block_ref symbolic source still expands into CHAI `_type` heroes with blockProps", async () => {
+    const occurrences: EventFeedItem[] = [
+      { ...baseEvent, id: "123", occurrence_id: "123:0" },
+      { ...baseEvent, id: "456", occurrence_id: "456:0", title: "Autumn Gala" },
+    ];
+    const fetcher = routeFetcher([["/feeds/events", { data: occurrences, meta: null }]]);
+    const block = wireBlock(
+      "heroes/hero-event-registration",
+      { type: "events_feed", limit: 6 },
+      { heading: "Upcoming Events" } // authored placeholder — must NOT survive the mint
+    );
+    const out = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out).toHaveLength(2);
+    for (const b of out) {
+      // Mint stays chai-shaped (renders via normalizeBlocks passthrough) — NOT block_ref/data.
+      expect(b._type).toBe("hero-event-registration");
+      expect(b.block_ref).toBeUndefined();
+      expect(b.data).toBeUndefined();
+      // Exact minimal key set (byte-for-byte lockstep with the Ruby hydrator mint).
+      expect(Object.keys(b).sort()).toEqual(["_feedMeta", "_id", "_parent", "_type", "blockProps"]);
+    }
+    // Occurrence props on blockProps (not the authored placeholder), heroes rendered from real data.
+    expect(out[0].blockProps?.heading).toBe("Summer Kickoff Party");
+    expect(out[1].blockProps?.heading).toBe("Autumn Gala");
   });
 });
