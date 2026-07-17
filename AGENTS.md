@@ -586,15 +586,18 @@ const { blocks } = parseDesignPayload(rawJsonStringOrObject);
 
 Returns `{ blocks: [] }` on invalid JSON — never throws.
 
-### Publish a new version
+### Prepare a new version (Jordan publishes)
 
 ```bash
 # 1. Update CHANGELOG.md
 # 2. Bump version in package.json
 pnpm version patch   # or minor / major
-# 3. pnpm run prepublishOnly runs automatically (tests + build)
-pnpm publish --access public
+# 3. Verify the package explicitly
+pnpm run prepublishOnly
 ```
+
+Do not run `pnpm publish`. Hand off the verified branch, version, dependency order,
+and publish order to Jordan.
 
 ---
 
@@ -720,7 +723,8 @@ Additional checks:
 ## 19. Dynamic Data Feed Layer (`src/data/`)
 
 Added in `0.2.0` (Dynamic Data Feeds, Phase 1); extended in `0.3.0` (Phase 3, Instagram).
-Implements the client-side rendering data layer of `FEED_CONTRACT.md` §7. **The synchronous
+Implements the client-side rendering data layer of
+`../../docs/dynamic-feeds/FEED_CONTRACT.md` §7. **The synchronous
 render engine is untouched** — resolution is a separate pre-render async pass. Files:
 
 ```
@@ -761,6 +765,8 @@ src/data/
 - Blog `category` / `tag` data-source filters and `categorySlug` / `tagSlug` client params accept
   `string | string[]`. Scalars retain `category_slug` / `tag_slug`; arrays use repeated Rack keys
   `category_slug[]` / `tag_slug[]`. Both shapes must persist unchanged across pagination calls.
+- If any named value cannot be resolved by the trusted server, preserve the error/empty outcome;
+  never retry without the filter or degrade an array to its resolvable subset.
 - **`resolveBlocks` is pure.** No registry access, no mutation of the input blocks. It maps each
   block to zero-or-more output blocks (one-to-many expansion, contract D6) and `.flat()`s the
   result. Bind target = `dataSource.bindTo` → `DEFAULT_BIND_TARGETS[block._type]` → `"posts"`.
