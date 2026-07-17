@@ -128,6 +128,40 @@ describe("resolveBlocks — blog_feed resolved", () => {
     await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
     expect(new URL(calls[0]).searchParams.get("per_page")).toBe("9");
   });
+
+  it("propagates multi-value filters from dataSource across derived pages", async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return jsonResponse({ data: [sampleItem], meta: null });
+    }) as typeof fetch;
+    const filters = {
+      type: "blog_feed" as const,
+      limit: 2,
+      offset: 0,
+      category: ["news", "events"],
+      tag: ["openings", "summer"],
+    };
+    const blocks: Block[] = [
+      { _id: "page-1", _type: "blog-grid-author-cards", dataSource: filters },
+      {
+        _id: "page-2",
+        _type: "blog-grid-author-cards",
+        dataSource: { ...filters, offset: 2 },
+      },
+    ];
+
+    await resolveBlocks(blocks, { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(calls).toHaveLength(2);
+    calls.forEach((url, index) => {
+      const query = new URL(url).searchParams;
+      expect(query.get("page")).toBe(String(index + 1));
+      expect(query.get("per_page")).toBe("2");
+      expect(query.getAll("category_slug[]")).toEqual(["news", "events"]);
+      expect(query.getAll("tag_slug[]")).toEqual(["openings", "summer"]);
+    });
+  });
 });
 
 describe("resolveBlocks — empty vs error are distinct (§2.3 rule 5)", () => {

@@ -101,10 +101,10 @@ export interface DataSource {
   limit?: number;
   /** Item offset — combined with `limit` to derive a 1-based page. */
   offset?: number;
-  /** Human-named category filter (name first, slug second — resolved by the server hydrator). */
-  category?: string;
-  /** Human-named tag filter. */
-  tag?: string;
+  /** Human-named category filter(s) (name first, slug second — resolved by the server hydrator). */
+  category?: string | string[];
+  /** Human-named tag filter(s). */
+  tag?: string | string[];
   /** Most-recent ordering hint (no real `featured` flag exists yet — see §2.2). */
   featuredOnly?: boolean;
   /** `blog_post` selector: pin a specific post by slug. */
@@ -572,8 +572,10 @@ export interface BlogFeedParams {
   page?: number;
   /** Clamped to ≤ 50 client-side. */
   perPage?: number;
-  categorySlug?: string;
-  tagSlug?: string;
+  /** Scalar uses `category_slug`; arrays use repeated `category_slug[]`. */
+  categorySlug?: string | string[];
+  /** Scalar uses `tag_slug`; arrays use repeated `tag_slug[]`. */
+  tagSlug?: string | string[];
   query?: string;
   sortBy?: "published_at" | "title";
   sortDir?: "asc" | "desc";

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Blog feed category/tag filters now accept scalar or array values. Scalars retain the existing
+  `category_slug` / `tag_slug` wire keys; arrays serialize as repeated `category_slug[]` /
+  `tag_slug[]` keys and remain attached to every paginated request.
+
 ## [0.5.0] - 2026-07-11
 
 ### Added

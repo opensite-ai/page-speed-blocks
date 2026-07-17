@@ -417,6 +417,13 @@ import { createFeedClient } from "@page-speed/blocks/data";
 
 const client = createFeedClient({ baseUrl, websiteToken, fetcher });
 const { data, meta, error } = await client.listBlogs({ page: 2, categorySlug: "news" });
+
+// Arrays use repeated Rack keys: category_slug[]=news&category_slug[]=events.
+await client.listBlogs({
+  page: 2,
+  categorySlug: ["news", "events"],
+  tagSlug: ["openings", "summer"],
+});
 ```
 
 `FeedClient` is the single place that builds feed URLs

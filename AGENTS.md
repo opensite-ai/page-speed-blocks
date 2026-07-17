@@ -758,6 +758,9 @@ src/data/
   (filters never drop across pages — legacy bug #1). `per_page` is clamped ≤ 50. Values are
   URL-encoded. Errors are **returned** as `{ data, meta, error }`, never thrown, never logged
   (legacy bugs #4/#5/#6). `baseUrl` and `per_page` are injected, never hardcoded.
+- Blog `category` / `tag` data-source filters and `categorySlug` / `tagSlug` client params accept
+  `string | string[]`. Scalars retain `category_slug` / `tag_slug`; arrays use repeated Rack keys
+  `category_slug[]` / `tag_slug[]`. Both shapes must persist unchanged across pagination calls.
 - **`resolveBlocks` is pure.** No registry access, no mutation of the input blocks. It maps each
   block to zero-or-more output blocks (one-to-many expansion, contract D6) and `.flat()`s the
   result. Bind target = `dataSource.bindTo` → `DEFAULT_BIND_TARGETS[block._type]` → `"posts"`.

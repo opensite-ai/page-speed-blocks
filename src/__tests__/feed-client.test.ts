@@ -104,6 +104,32 @@ describe("createFeedClient — filter + page persistence (legacy bug #1)", () =>
     // URLSearchParams encodes spaces as "+" and ampersands as %26.
     expect(calls[0]).toContain("query=a+%26+b");
   });
+
+  it("serializes array filters with Rack keys and keeps them on every page request", async () => {
+    const { calls, fetcher } = recordingFetcher({ data: [], meta: null });
+    const client = createFeedClient({ baseUrl: BASE, websiteToken: TOKEN, fetcher });
+    const multiValueFilters: BlogFeedParams = {
+      categorySlug: ["news & events", "café"],
+      tagSlug: ["grand/opening", "summer"],
+      sortBy: "published_at",
+    };
+
+    await client.listBlogs({ ...multiValueFilters, page: 1 });
+    await client.listBlogs({ ...multiValueFilters, page: 2 });
+
+    for (const url of calls) {
+      const query = new URL(url).searchParams;
+      expect(query.getAll("category_slug[]")).toEqual(["news & events", "café"]);
+      expect(query.getAll("tag_slug[]")).toEqual(["grand/opening", "summer"]);
+      expect(query.has("category_slug")).toBe(false);
+      expect(query.has("tag_slug")).toBe(false);
+      expect(query.get("sort_by")).toBe("published_at");
+    }
+    expect(new URL(calls[0]).searchParams.get("page")).toBe("1");
+    expect(new URL(calls[1]).searchParams.get("page")).toBe("2");
+    expect(calls[0]).toContain("category_slug%5B%5D=news+%26+events");
+    expect(calls[0]).toContain("tag_slug%5B%5D=grand%2Fopening");
+  });
 });
 
 describe("createFeedClient — per_page clamp (legacy bug #6 / #10)", () => {

@@ -195,8 +195,12 @@ function dataSourceToBlogParams(source: DataSource): BlogFeedParams {
   }
   // On the client, human-named filters are already resolved to slugs by the server hydrator
   // (FEED_CONTRACT §2.3 rule 3); pass them through as slug filters.
-  if (typeof source.category === "string") params.categorySlug = source.category;
-  if (typeof source.tag === "string") params.tagSlug = source.tag;
+  if (typeof source.category === "string" || Array.isArray(source.category)) {
+    params.categorySlug = source.category;
+  }
+  if (typeof source.tag === "string" || Array.isArray(source.tag)) {
+    params.tagSlug = source.tag;
+  }
   return params;
 }
 

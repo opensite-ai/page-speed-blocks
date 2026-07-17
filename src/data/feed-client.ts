@@ -20,6 +20,21 @@ import type {
 /** Upper bound for `per_page` (FEED_CONTRACT §3.2 — clamped client-side too). */
 export const MAX_PER_PAGE = 50;
 
+/** Preserve the legacy scalar wire key while using Rack array binding for multi-value filters. */
+function appendBlogFilter(
+  query: URLSearchParams,
+  key: "category_slug" | "tag_slug",
+  value: string | string[] | undefined
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item) query.append(`${key}[]`, item);
+    }
+  } else if (value) {
+    query.set(key, value);
+  }
+}
+
 /**
  * Serialize normalized list params into wire query params (§3.2).
  * Every provided filter is serialized on every call — this is the class's guarantee
@@ -36,8 +51,8 @@ function buildBlogQuery(params: BlogFeedParams): string {
     const clamped = Math.min(Math.max(1, Math.trunc(params.perPage)), MAX_PER_PAGE);
     query.set("per_page", String(clamped));
   }
-  if (params.categorySlug) query.set("category_slug", params.categorySlug);
-  if (params.tagSlug) query.set("tag_slug", params.tagSlug);
+  appendBlogFilter(query, "category_slug", params.categorySlug);
+  appendBlogFilter(query, "tag_slug", params.tagSlug);
   if (params.query) query.set("query", params.query);
   if (params.sortBy) query.set("sort_by", params.sortBy);
   if (params.sortDir) query.set("sort_dir", params.sortDir);
