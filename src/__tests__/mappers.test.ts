@@ -124,6 +124,7 @@ describe("mapInstagramFeedItem (§4.1b)", () => {
           media_type: "video",
           image_url: "https://cdn.ing/ig/thumb.jpg",
           video_url: "https://cdn.ing/ig/clip.mp4",
+          hls_url: "https://cdn.ing/ig/master.m3u8",
         },
       ],
     };
@@ -134,6 +135,7 @@ describe("mapInstagramFeedItem (§4.1b)", () => {
       videoUrl: "https://cdn.ing/ig/clip.mp4",
       viewCount: 480,
     });
+    expect(out).not.toHaveProperty("hlsUrl");
   });
 
   it("skips an imageless post (files[0].image_url null) — returns null (§4.1b)", () => {

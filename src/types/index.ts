@@ -302,6 +302,8 @@ export interface InstagramFeedFile {
   image_url: string | null;
   /** Re-hosted video source CDN URL; null on image files. */
   video_url: string | null;
+  /** Optional read-only HLS playlist URL; not consumed by the current block mapper. */
+  hls_url?: string | null;
 }
 
 /**
