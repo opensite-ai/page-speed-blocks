@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.14.0
-        version: 3.14.0(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.14.1
+        version: 3.14.1(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.9
         version: 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -18,8 +18,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router':
-        specifier: 1.2.0
-        version: 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 1.2.1
+        version: 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/video':
         specifier: 0.0.7
         version: 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -496,8 +496,8 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.14.0':
-    resolution: {integrity: sha512-pYk7xAxujc3efF19tAah25d3oybfed0lCa2ovmYaCVpv/FC9s+PJcwDve82t87s92+rSoMH16ClfTU1Q3L+lZQ==}
+  '@opensite/ui@3.14.1':
+    resolution: {integrity: sha512-PASWapS6AQXyWdWOt/E9yzIv3U/ZHnk5DMDFRm2Xi9kyuShJsx+1tC3PJQELJRgxzxjq7AsR/NsMak9s5lZSqQ==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       '@page-speed/pressable': '>=0.0.9'
@@ -598,6 +598,13 @@ packages:
 
   '@page-speed/router@1.2.0':
     resolution: {integrity: sha512-Jj/Td20rc4e3FkRfIWvYelseZ7aQiz30dOhBgnYRtTFj0o8Pg+CoWLhenkKzQxUwb71fJENQhwCjtyH7oLh3Ug==}
+    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
+
+  '@page-speed/router@1.2.1':
+    resolution: {integrity: sha512-/dZ9EGjG86GZHyVrJPI71PK56A7nFZ9C8Fqefoz8aDh6QhjInIba1oxERd9wGUQ3SexOx9C8qU/4QzcsjFbkHQ==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=17.0.0'
@@ -3606,7 +3613,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.14.0(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.14.1(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/forms': 0.8.2(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
@@ -3618,7 +3625,7 @@ snapshots:
       '@page-speed/media-immersive': 0.5.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pdf-viewer': 0.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pressable': 0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/router': 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/skins': 0.1.2(react@18.3.1)
       '@page-speed/social-share': 0.1.7(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/video': 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3768,6 +3775,11 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@page-speed/router@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
