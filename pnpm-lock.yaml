@@ -9,20 +9,20 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.14.1
-        version: 3.14.1(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.14.7
+        version: 3.14.7(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
-        specifier: 0.4.9
-        version: 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.4.10
+        version: 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pressable':
-        specifier: 0.1.0
-        version: 0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.1.1
+        version: 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router':
         specifier: 1.2.1
         version: 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/video':
-        specifier: 0.0.7
-        version: 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.0.9
+        version: 0.0.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^6.1.5
@@ -496,12 +496,12 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.14.1':
-    resolution: {integrity: sha512-PASWapS6AQXyWdWOt/E9yzIv3U/ZHnk5DMDFRm2Xi9kyuShJsx+1tC3PJQELJRgxzxjq7AsR/NsMak9s5lZSqQ==}
+  '@opensite/ui@3.14.7':
+    resolution: {integrity: sha512-LC2+CKDvK/O8zS7l5CL/zhQu6l7TlBoUVxSQ6DpfM969tDqgNfoIL9MqRw4lBS141uNA2KC3VoMmQZsmyzKtzQ==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
-      '@page-speed/pressable': '>=0.0.9'
-      '@page-speed/router': '>=1.0.0'
+      '@page-speed/pressable': 0.1.1
+      '@page-speed/router': 1.2.1
       '@tailwindcss/typography': '>=0.5.0'
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -509,8 +509,8 @@ packages:
       '@tailwindcss/typography':
         optional: true
 
-  '@page-speed/forms@0.8.2':
-    resolution: {integrity: sha512-GvXrn7WXeuL/3Oc49AlHYyBCosYl7YpFMBrs2QxS7KBMX/P9A55JT+7sJ5VakrD6XDwP9rB5yaZfZoCDVQeZ/g==}
+  '@page-speed/forms@0.8.3':
+    resolution: {integrity: sha512-XyWVwgL292aqTepMJnc0ECuGfyh5F0XqSMvjdSuW4gr3mGSViMeZmuKEqcX4CZwnv4DJFwb01XFr/CIVP9cTXA==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=16.8.0'
@@ -523,12 +523,12 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
-  '@page-speed/icon@0.1.1':
-    resolution: {integrity: sha512-SesHU3BZRh+CqqSWNC+QikWZQx7RP/dFurD5WiviwQ06yONNXQB5eY7o28kfAxZnHmHwLGlGQBRakq/PPEf8xg==}
+  '@page-speed/hooks@0.4.6':
+    resolution: {integrity: sha512-IDVTQiVKEAkZWcKfNImuznuCvhtmFYiaPpdY45FjSzgaI+ju/pdeCyKinDaZcaFHn7cARyOHTZlukYwCYzCZcg==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
-      react: '>=18.0.0'
-      react-dom: '>=18.0.0'
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
 
   '@page-speed/icon@0.1.2':
     resolution: {integrity: sha512-6ANg38GKbY/DgD7pvH2AqXH8khjwr0wUvapH5p2FASfKA7+s49Hvo/WfVt9NpCuQn8S4ZfIyA9gZ2etHnWP5FA==}
@@ -536,6 +536,13 @@ packages:
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
+
+  '@page-speed/img@0.4.10':
+    resolution: {integrity: sha512-xSxMcKbz1jEzRiK3ErOTBt15NH9PgNZd4+CJRzkEGnOJgBBXNSIWv2bZFYGnp1xUOt+Y38RSc+iDD2mng0Ci7A==}
+    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
 
   '@page-speed/img@0.4.9':
     resolution: {integrity: sha512-j1MtQkDvBORwRFY1JR92WQ00LlfsbeehPmAVVvJ1bAOccp1UxDflGoZ3Xq/iJWe9D2fGARc5g7beSa9VHWRk5w==}
@@ -557,8 +564,8 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@page-speed/markdown-to-jsx@0.0.7':
-    resolution: {integrity: sha512-92B1aj+mxfNn61GKMDatdep9wjQK4FSkwbQ0so24vnvyc2dzcrfNhmzPDaOln0wg1rrlPZdloUof2nbn1OwRjw==}
+  '@page-speed/markdown-to-jsx@0.0.8':
+    resolution: {integrity: sha512-kS2buXaSA9k1ITx0vD4rcO0vvMrR4Gli74vZsHRbpcKSQmogxyBfQUVz53CE04Duwg7zuSW1uxSo1xhpb1ZnxA==}
     peerDependencies:
       '@page-speed/img': '>=0.4.6'
       '@page-speed/pressable': '>=0.0.1'
@@ -570,8 +577,8 @@ packages:
       '@page-speed/pressable':
         optional: true
 
-  '@page-speed/media-immersive@0.5.1':
-    resolution: {integrity: sha512-FXQW/yIK5gLycK2Fgdxovh7wKdRGz5k7s/MGruRjcV24fP9jqfFGlDiDyjmmiCM406csOsLeaCilDFTq8spBNA==}
+  '@page-speed/media-immersive@0.5.2':
+    resolution: {integrity: sha512-RWXyqFtmiUB/vDqxAK4/VYg3b7wQXdyImsun1TuMFAmJ74I2ElOQpkmqKA/NlHbYdpsdcvRq9wZXEUQUj6ifpA==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=17.0.0'
@@ -583,22 +590,8 @@ packages:
       react: ^18.0.0
       react-dom: ^18.0.0
 
-  '@page-speed/pressable@0.1.0':
-    resolution: {integrity: sha512-V+hWHfrP9r0r7iggEXYE87p6a6WACn6Wr8frPMWWHGRPRUtZaQ81gXN9Kt8LjI1OKr88o9xCLmRpDdHmGoHegg==}
-    peerDependencies:
-      react: '>=17.0.0'
-      react-dom: '>=17.0.0'
-
-  '@page-speed/router@1.1.0':
-    resolution: {integrity: sha512-FSNvxSlAh7Snw5Phro8xMIdPcjGjaf73wVNSYTobYBrW9I8uS/8UUaMe+HdAQ7OxPXiga0//ZxXB2Yxt3m/q8w==}
-    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
-    peerDependencies:
-      react: '>=17.0.0'
-      react-dom: '>=17.0.0'
-
-  '@page-speed/router@1.2.0':
-    resolution: {integrity: sha512-Jj/Td20rc4e3FkRfIWvYelseZ7aQiz30dOhBgnYRtTFj0o8Pg+CoWLhenkKzQxUwb71fJENQhwCjtyH7oLh3Ug==}
-    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
+  '@page-speed/pressable@0.1.1':
+    resolution: {integrity: sha512-v9Oup/v9jMYcAq7Z+CGWEjoGQxs6lnU0RosWApalSb7IYHWpy/ZMpX1QB0CIXNOOhnBgiE6WZfiGwkG31WUoPg==}
     peerDependencies:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
@@ -610,8 +603,8 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@page-speed/skins@0.1.2':
-    resolution: {integrity: sha512-ZGXHBti9eDdy/kL/dj5fHgO7HQEOMjJWjsT/TYSVo31m5Av9UQU80b+fG/cZKMaczzk5PApY0Ome0W2yfKrXUg==}
+  '@page-speed/skins@0.1.3':
+    resolution: {integrity: sha512-0l6r6mI7aaCLhLmqKtyGx8HGQ6VWH63l232yEWCmdowC1lZMNZO4Te25nJMiHyfveRfs6nxLlGCJn78LQDE2tw==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=17.0.0'
@@ -627,8 +620,8 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@page-speed/video@0.0.7':
-    resolution: {integrity: sha512-mgcKJ48DrTLUJsKKVI/Nhauqpi0ZSeZhueTuESo8NgClKc85sNjWKp2QPxcScO/ef2Blkt3z2i0X7xKWLH6z6g==}
+  '@page-speed/video@0.0.9':
+    resolution: {integrity: sha512-kY5a4TPCxtAl7BScZaO7OJmOQn9Vyr45wfU0XS+UKqUniBzXMTGBnJi+CKUXfPqzLdsdsjW6rCuj65wv+Rznaw==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=17.0.0'
@@ -3613,22 +3606,22 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.14.1(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.14.7(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/forms': 0.8.2(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      '@page-speed/forms': 0.8.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/icon': 0.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/img': 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/img': 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/lightbox': 0.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/maps': 0.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/markdown-to-jsx': 0.0.7(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/media-immersive': 0.5.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/markdown-to-jsx': 0.0.8(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/media-immersive': 0.5.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pdf-viewer': 0.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/pressable': 0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/pressable': 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/skins': 0.1.2(react@18.3.1)
+      '@page-speed/skins': 0.1.3(react@18.3.1)
       '@page-speed/social-share': 0.1.7(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/video': 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/video': 0.0.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-accordion': 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-aspect-ratio': 1.1.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-avatar': 1.1.11(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3668,10 +3661,10 @@ snapshots:
       - mapbox-gl
       - typescript
 
-  '@page-speed/forms@0.8.2(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@page-speed/forms@0.8.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/icon': 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/icon': 0.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-direction': 1.1.1(@types/react@18.3.28)(react@18.3.1)
       '@radix-ui/react-slot': 1.2.4(@types/react@18.3.28)(react@18.3.1)
       class-variance-authority: 0.7.1
@@ -3701,13 +3694,21 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       web-vitals: 5.1.0
 
-  '@page-speed/icon@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/hooks@0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      web-vitals: 5.1.0
+
+  '@page-speed/icon@0.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@page-speed/icon@0.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
+      '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/hooks': 0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
@@ -3738,19 +3739,19 @@ snapshots:
     transitivePeerDependencies:
       - mapbox-gl
 
-  '@page-speed/markdown-to-jsx@0.0.7(@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/markdown-to-jsx@0.0.8(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       markdown-to-jsx: 7.7.17(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
     optionalDependencies:
-      '@page-speed/img': 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/pressable': 0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/img': 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/pressable': 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
-  '@page-speed/media-immersive@0.5.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/media-immersive@0.5.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@page-speed/img': 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/video': 0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/img': 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/video': 0.0.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
@@ -3760,42 +3761,32 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@page-speed/pressable@0.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@page-speed/router': 1.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       tailwind-merge: 2.6.1
 
-  '@page-speed/router@1.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
-  '@page-speed/router@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
   '@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@page-speed/skins@0.1.2(react@18.3.1)':
+  '@page-speed/skins@0.1.3(react@18.3.1)':
     optionalDependencies:
       react: 18.3.1
 
   '@page-speed/social-share@0.1.7(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/router': 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@page-speed/video@0.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/video@0.0.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       hls.js: 1.6.15
       react: 18.3.1
