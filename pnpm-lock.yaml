@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.14.7
-        version: 3.14.7(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.14.9
+        version: 3.14.9(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.10
         version: 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -496,8 +496,8 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.14.7':
-    resolution: {integrity: sha512-LC2+CKDvK/O8zS7l5CL/zhQu6l7TlBoUVxSQ6DpfM969tDqgNfoIL9MqRw4lBS141uNA2KC3VoMmQZsmyzKtzQ==}
+  '@opensite/ui@3.14.9':
+    resolution: {integrity: sha512-GH/hosLQVl3jD56ZoxR0gSszG30W9pATgAnhb98VnbkcgLOI/7pshqzpkHIefbekLIx3iLxpFXX5kr1XOo53mA==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       '@page-speed/pressable': 0.1.1
@@ -511,13 +511,6 @@ packages:
 
   '@page-speed/forms@0.8.3':
     resolution: {integrity: sha512-XyWVwgL292aqTepMJnc0ECuGfyh5F0XqSMvjdSuW4gr3mGSViMeZmuKEqcX4CZwnv4DJFwb01XFr/CIVP9cTXA==}
-    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
-    peerDependencies:
-      react: '>=16.8.0'
-      react-dom: '>=16.8.0'
-
-  '@page-speed/hooks@0.4.5':
-    resolution: {integrity: sha512-1i22hEg9hQ5zt9/cEcI8A1XgoihEZvLBwOnKmCp2D4vgbXu3OqvzbMBYatWbUruYZnDo0qnw8uyB7eW6mvzHzg==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=16.8.0'
@@ -539,13 +532,6 @@ packages:
 
   '@page-speed/img@0.4.10':
     resolution: {integrity: sha512-xSxMcKbz1jEzRiK3ErOTBt15NH9PgNZd4+CJRzkEGnOJgBBXNSIWv2bZFYGnp1xUOt+Y38RSc+iDD2mng0Ci7A==}
-    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
-    peerDependencies:
-      react: '>=17.0.0'
-      react-dom: '>=17.0.0'
-
-  '@page-speed/img@0.4.9':
-    resolution: {integrity: sha512-j1MtQkDvBORwRFY1JR92WQ00LlfsbeehPmAVVvJ1bAOccp1UxDflGoZ3Xq/iJWe9D2fGARc5g7beSa9VHWRk5w==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       react: '>=17.0.0'
@@ -3606,7 +3592,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.14.7(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.14.9(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/forms': 0.8.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
@@ -3688,12 +3674,6 @@ snapshots:
       - expo-sqlite
       - typescript
 
-  '@page-speed/hooks@0.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      web-vitals: 5.1.0
-
   '@page-speed/hooks@0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
@@ -3712,16 +3692,9 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@page-speed/img@0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/hooks': 0.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
   '@page-speed/lightbox@0.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@page-speed/img': 0.4.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/img': 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pdf-viewer': 0.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       clsx: 2.1.1
       react: 18.3.1
