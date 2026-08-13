@@ -9,16 +9,16 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.14.12
-        version: 3.14.12(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.14.13
+        version: 3.14.13(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.10
         version: 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pressable':
-        specifier: 0.1.1
+        specifier: ^0.1.1
         version: 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router':
-        specifier: 1.2.1
+        specifier: ^1.2.1
         version: 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/video':
         specifier: 0.0.9
@@ -496,12 +496,12 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.14.12':
-    resolution: {integrity: sha512-IeeLTj2AgpDtXubpYTUU0SMEZ2vHg3rNsEhSYTTNAidAZplFcgXEXNNhYnbzT3SGOhArqzQ2zq65Javy6wy+Eg==}
+  '@opensite/ui@3.14.13':
+    resolution: {integrity: sha512-mZwlrYmmCfedzKyEAPwDQ3FyvftJbuVjdhm9acRdkrzjKt/GBbw9OrbQDhsfI5Zda62H5iSRYJXaqn2cMskMJA==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
-      '@page-speed/pressable': 0.1.1
-      '@page-speed/router': 1.2.1
+      '@page-speed/pressable': 0.1.2
+      '@page-speed/router': 1.2.2
       '@tailwindcss/typography': '>=0.5.0'
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -550,11 +550,11 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@page-speed/markdown-to-jsx@0.0.8':
-    resolution: {integrity: sha512-kS2buXaSA9k1ITx0vD4rcO0vvMrR4Gli74vZsHRbpcKSQmogxyBfQUVz53CE04Duwg7zuSW1uxSo1xhpb1ZnxA==}
+  '@page-speed/markdown-to-jsx@0.0.9':
+    resolution: {integrity: sha512-vn+d5YLRbYRmj8EdUOy49z3Xzgc7lcdNlNWEXFis3yZDPgiX2gKF0nEK9T0iUNa+bk/c0RSSmIfnET+MPSJRow==}
     peerDependencies:
       '@page-speed/img': '>=0.4.6'
-      '@page-speed/pressable': '>=0.0.1'
+      '@page-speed/pressable': 0.1.2
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
     peerDependenciesMeta:
@@ -589,6 +589,13 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
+  '@page-speed/router@1.2.2':
+    resolution: {integrity: sha512-8refyE8oH+q3w+MkVUCybgYIIhPS02z0bCDZY2cWRTb4fCl+HuP/8RH2GY5Lr0QICCP7zOyGM8S7OJWR/Grscw==}
+    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
+
   '@page-speed/skins@0.1.3':
     resolution: {integrity: sha512-0l6r6mI7aaCLhLmqKtyGx8HGQ6VWH63l232yEWCmdowC1lZMNZO4Te25nJMiHyfveRfs6nxLlGCJn78LQDE2tw==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
@@ -598,8 +605,8 @@ packages:
       react:
         optional: true
 
-  '@page-speed/social-share@0.1.7':
-    resolution: {integrity: sha512-xj8trH8EBhe+QENQFobYykbcQ3yVm5GfxKIAoX/1l3mrX5/zqk4MVvn0l+VasZDEckirID0yqghH9An2ifdQnQ==}
+  '@page-speed/social-share@0.1.8':
+    resolution: {integrity: sha512-wgAeiiIvw09JfFifyefEPvKGRn4Zi51bgS2ByT8CdvtllUxYPE4qyqUvgHUyx6SUOleb1ENxQ0e39noywzslPw==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       '@opensite/hooks': '>=2.0.0'
@@ -3592,7 +3599,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.14.12(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.14.13(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/forms': 0.8.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
@@ -3600,13 +3607,13 @@ snapshots:
       '@page-speed/img': 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/lightbox': 0.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/maps': 0.2.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/markdown-to-jsx': 0.0.8(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/markdown-to-jsx': 0.0.9(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/media-immersive': 0.5.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pdf-viewer': 0.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/pressable': 0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/skins': 0.1.3(react@18.3.1)
-      '@page-speed/social-share': 0.1.7(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/social-share': 0.1.8(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/video': 0.0.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-accordion': 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-aspect-ratio': 1.1.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3712,7 +3719,7 @@ snapshots:
     transitivePeerDependencies:
       - mapbox-gl
 
-  '@page-speed/markdown-to-jsx@0.0.8(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/markdown-to-jsx@0.0.9(@page-speed/img@0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       markdown-to-jsx: 7.7.17(react@18.3.1)
       react: 18.3.1
@@ -3748,14 +3755,19 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
+  '@page-speed/router@1.2.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
   '@page-speed/skins@0.1.3(react@18.3.1)':
     optionalDependencies:
       react: 18.3.1
 
-  '@page-speed/social-share@0.1.7(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@page-speed/social-share@0.1.8(@opensite/hooks@2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@page-speed/router': 1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@page-speed/router': 1.2.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 

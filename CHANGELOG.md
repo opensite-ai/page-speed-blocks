@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `category_slug` / `tag_slug` wire keys; arrays serialize as repeated `category_slug[]` /
   `tag_slug[]` keys and remain attached to every paginated request.
 
+## [0.5.7] - 2026-08-13
+
+### Changed
+
+- **Dependency ranges loosened so first-party patch fixes can actually reach consumers.**
+  `@page-speed/router` `1.2.1` → `^1.2.1` and `@page-speed/pressable` `0.1.1` → `^0.1.1`.
+  The exact pins made npm install a *nested* old copy under `@page-speed/blocks/node_modules/`
+  whenever the app hoisted a newer version, so a published router/pressable fix was a silent
+  no-op for anything rendered through this runtime (verified: an app resolving
+  `@page-speed/router@1.2.0` with `@page-speed/blocks@0.5.5` ends up with three router copies —
+  root `1.2.0`, `blocks/node_modules` `1.2.1`, `pressable/node_modules` `1.2.1`).
+  No source changes; both packages remain `external` in the bundle, so the consumer's hoisted
+  copy is what executes at runtime.
+
 ## [0.5.0] - 2026-07-11
 
 ### Added
