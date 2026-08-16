@@ -252,6 +252,43 @@ export interface BlogFeedDetailItem extends BlogFeedItem {
   updated_at: string;
   /** Up to 3 related list items — server-computed. */
   related: BlogFeedItem[];
+  /**
+   * Per-post longform layout override — the raw `blogs.data_points["article_layout"]`
+   * render hint (FEED_CONTRACT §3.5, R9). NOT validated server-side: the client
+   * allow-lists it against {@link ARTICLE_LAYOUT_COMPONENT_IDS} and falls back to the
+   * `_type` already baked into `_templates.blog_detail` (which dashtrack-ai resolved
+   * from the validated SITE default). That reproduces the customer-sites
+   * `BlogDetailEntry#resolved_article_layout` precedence exactly:
+   * per-blog → site default → `article-breadcrumb-social`.
+   *
+   * Absent on servers older than the R9 toastability deploy.
+   */
+  article_layout?: string | null;
+  /**
+   * Site-level blog settings the detail props depend on (FEED_CONTRACT §3.5, R9).
+   * Read from `website_blog_configs` — the same row customer-sites `BlogDetailEntry`
+   * reads per request, so first load and SPA navigation cannot skew.
+   *
+   * Absent on servers older than the R9 toastability deploy (the mapper then applies
+   * the documented Ruby defaults: `/blog` and byline visible).
+   */
+  site_blog?: BlogFeedSiteSettings | null;
+}
+
+/** Site-level blog settings carried on the §3.5 detail wire (R9). */
+export interface BlogFeedSiteSettings {
+  /**
+   * The site's real blog index route (`website_blog_configs.page_category.slug`),
+   * already normalized server-side to a leading-slash, no-trailing-slash path.
+   * Falls back to `"/blog"` when the site's config has no page category.
+   */
+  index_path?: string | null;
+  /**
+   * `website_blog_configs.show_publish_date != false` — when false the WHOLE byline
+   * row (author, publish date, read time) is suppressed, exactly as
+   * `BlogDetailEntry#show_byline?` does on first load.
+   */
+  show_byline?: boolean | null;
 }
 
 /**
@@ -276,6 +313,18 @@ export interface BlogPostItem {
 }
 
 /**
+ * `BlogCategoryChip` — one entry of the `categories` filter-chip array bound onto
+ * `blog-filtered-results` (FEED_CONTRACT §2.4, R9). `@opensite/ui` types it as
+ * `CategoryFilter { label: ReactNode; value: string }`; hydration only ever emits plain
+ * strings. `value` is the LOWERCASED category name because the block filters by comparing
+ * `post.category.toLowerCase()` against it, and hydrated posts carry the category NAME.
+ */
+export interface BlogCategoryChip {
+  label: string;
+  value: string;
+}
+
+/**
  * `blog_post` detail props inlined into `article/*` blocks (FEED_CONTRACT §4.3).
  */
 export interface BlogPostDetail extends BlogPostItem {
@@ -285,6 +334,79 @@ export interface BlogPostDetail extends BlogPostItem {
   tags?: string[];
   /** From `related`, mapped per §4.1 (for templates that include blog-related-articles). */
   articles?: BlogPostItem[];
+}
+
+/** One breadcrumb crumb on the article layouts (§4.3). */
+export interface ArticleBreadcrumb {
+  label: string;
+  href: string;
+}
+
+/** One "On this page" TOC entry, derived from an H2 (§4.3). */
+export interface ArticleSection {
+  /** Byte-identical to the id `@page-speed/markdown-to-jsx` renders on the `<h2>`. */
+  id: string;
+  title: string;
+}
+
+/** One chapter entry for `article-chapters-author`, derived from the same H2s (§4.3). */
+export interface ArticleChapter {
+  id: string;
+  number: number;
+  title: string;
+}
+
+/** Author object shape read by `article-breadcrumb-social` / `article-chapters-author` (§4.3). */
+export interface ArticleAuthor {
+  name: string;
+}
+
+/**
+ * The nested `post` object `article-hero-prose` destructures its entire header from (§4.3).
+ * `pubDate` is a **Unix-ms integer**, never a string: the component formats it with date-fns
+ * `format()`, which accepts a Date or a number and THROWS on a string.
+ */
+export interface ArticlePost {
+  title: string;
+  description?: string;
+  authorName?: string;
+  image?: string;
+  /** Unix milliseconds (`published_at` truncated to whole seconds), never an ISO string. */
+  pubDate?: number;
+}
+
+/**
+ * The FAT union superset of article-layout props (FEED_CONTRACT §4.3, R9) — the client mirror
+ * of customer-sites `BlogDetailEntry#blog_to_article_props`. Every one of the six longform
+ * layouts renders from this single payload; each destructures only its declared props (none
+ * spread `...rest`), so the union is safe. Absent fields are OMITTED, never fabricated.
+ */
+export interface ArticleDetailProps {
+  /** The one uniform field across all six components. */
+  markdownString?: string;
+  title: string;
+  currentPage: string;
+  breadcrumbs: ArticleBreadcrumb[];
+  /** Always false — scroll listeners re-render the whole article per frame. */
+  enableTocTracking: boolean;
+  enableBackToTop: boolean;
+  enableChapterTracking: boolean;
+  tags: string[];
+  articles: BlogPostItem[];
+  description?: string;
+  subtitle?: string;
+  summary?: string;
+  publishDate?: string;
+  authorName?: string;
+  author?: ArticleAuthor;
+  heroImageSrc?: string;
+  heroImageAlt?: string;
+  readTime?: string;
+  sections?: ArticleSection[];
+  chapters?: ArticleChapter[];
+  post: ArticlePost;
+  /** date-fns token `article-hero-prose` formats `post.pubDate` with. */
+  dateFormat: string;
 }
 
 /**

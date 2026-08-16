@@ -1,0 +1,307 @@
+{
+  "_readme": [
+    "CROSS-IMPLEMENTATION PARITY FIXTURE (FEED_CONTRACT §4.3, R9).",
+    "",
+    "The blog-detail article props are produced TWICE: server-side on first load by",
+    "customer-sites `BlogDetailEntry#blog_to_article_props`, and client-side on SPA navigation by",
+    "`@page-speed/blocks` `mapBlogDetailToArticleProps` (src/data/article-props.ts). A divergence",
+    "between them is invisible until a visitor clicks a card instead of refreshing — which is",
+    "exactly the R9 launch bug.",
+    "",
+    "This file is the contract. BYTE-IDENTICAL TWIN:",
+    "  utility-modules/customer-sites/spec/fixtures/blog_detail_parity.json",
+    "  utility-modules/page-speed-blocks/src/__tests__/fixtures/blog-detail-parity.json",
+    "Each repo asserts its OWN implementation reproduces `expected_props` for the given `wire`",
+    "item, so a change on one side turns the other repo's suite red. Update BOTH copies together.",
+    "",
+    "Comparison normalization (applied identically on both sides):",
+    "  1. null / undefined values are dropped recursively (Ruby emits nulls, JS omits keys);",
+    "  2. `articles[i].id` is replaced with `\"__RELATED_ID_<i>__\"` (the Ruby side reads real",
+    "     autoincrement ids, the wire carries fixed ones — everything else is compared verbatim)."
+  ],
+  "cases": [
+    {
+      "name": "byline visible — hero image, category crumb, fenced code, custom heading id, related post",
+      "wire": {
+        "id": 4201,
+        "token": "fixture-token-4201",
+        "slug": "ai-voice-agents",
+        "title": "AI Voice Agents",
+        "summary": "How voice agents book appointments—and what to measure.",
+        "link_path": "/b/ai-voice-agents",
+        "published_at": "2026-07-01T09:00:00Z",
+        "author": "Jordan H",
+        "image_url": "https://cdn.ing/assets/i/r/1/hero.webp",
+        "image_alt": "Voice agent dashboard",
+        "seo_title": "AI Voice Agents",
+        "seo_description": "Voice agents, measured.",
+        "blog_category": {
+          "name": "AI Automation",
+          "slug": "ai-automation"
+        },
+        "blog_tags": [
+          {
+            "name": "voice",
+            "slug": "voice"
+          },
+          {
+            "name": "AI",
+            "slug": "ai"
+          }
+        ],
+        "body": "Intro paragraph with a [link](https://example.com/docs) and `inline code`.\n\n## What an AI voice agent is—and isn't\n\nBody text for the first section explains the agent flow in plain language.\n\n```bash\n# not a heading\n## also not a heading\n```\n\n## Metrics that matter {#metrics}\n\nMore body text here about no-show rate, booking rate, and handle time.\n\n### A third-level heading is not a section\n\nClosing paragraph.\n",
+        "body_format": "markdown",
+        "updated_at": "2026-07-02T09:00:00Z",
+        "related": [
+          {
+            "id": 4202,
+            "token": "fixture-token-4202",
+            "slug": "related-post",
+            "title": "Related Post",
+            "summary": "Related summary.",
+            "link_path": "/b/related-post",
+            "published_at": "2026-06-15T09:00:00Z",
+            "author": "Jordan H",
+            "image_url": null,
+            "image_alt": null,
+            "seo_title": null,
+            "seo_description": null,
+            "blog_category": {
+              "name": "AI Automation",
+              "slug": "ai-automation"
+            },
+            "blog_tags": [
+              {
+                "name": "voice",
+                "slug": "voice"
+              }
+            ]
+          }
+        ],
+        "article_layout": "article-hero-prose",
+        "site_blog": {
+          "index_path": "/insights",
+          "show_byline": true
+        }
+      },
+      "expected_props": {
+        "enableTocTracking": false,
+        "enableBackToTop": false,
+        "markdownString": "Intro paragraph with a [link](https://example.com/docs) and `inline code`.\n\n## What an AI voice agent is—and isn't\n\nBody text for the first section explains the agent flow in plain language.\n\n```bash\n# not a heading\n## also not a heading\n```\n\n## Metrics that matter {#metrics}\n\nMore body text here about no-show rate, booking rate, and handle time.\n\n### A third-level heading is not a section\n\nClosing paragraph.\n",
+        "title": "AI Voice Agents",
+        "currentPage": "AI Voice Agents",
+        "breadcrumbs": [
+          {
+            "label": "Blog",
+            "href": "/insights"
+          },
+          {
+            "label": "AI Automation",
+            "href": "/insights?category_slug=ai-automation"
+          }
+        ],
+        "enableChapterTracking": false,
+        "tags": [
+          "voice",
+          "AI"
+        ],
+        "articles": [
+          {
+            "id": "__RELATED_ID_0__",
+            "title": "Related Post",
+            "summary": "Related summary.",
+            "category": "AI Automation",
+            "author": "Jordan H",
+            "date": "Jun 15, 2026",
+            "href": "/b/related-post"
+          }
+        ],
+        "description": "How voice agents book appointments—and what to measure.",
+        "subtitle": "How voice agents book appointments—and what to measure.",
+        "summary": "How voice agents book appointments—and what to measure.",
+        "publishDate": "Jul 1, 2026",
+        "authorName": "Jordan H",
+        "author": {
+          "name": "Jordan H"
+        },
+        "heroImageSrc": "https://cdn.ing/assets/i/r/1/hero.webp",
+        "heroImageAlt": "Voice agent dashboard",
+        "readTime": "1 min read",
+        "sections": [
+          {
+            "id": "what-an-ai-voice-agent-isand-isnt",
+            "title": "What an AI voice agent is—and isn't"
+          },
+          {
+            "id": "metrics",
+            "title": "Metrics that matter"
+          }
+        ],
+        "chapters": [
+          {
+            "id": "what-an-ai-voice-agent-isand-isnt",
+            "number": 1,
+            "title": "What an AI voice agent is—and isn't"
+          },
+          {
+            "id": "metrics",
+            "number": 2,
+            "title": "Metrics that matter"
+          }
+        ],
+        "post": {
+          "title": "AI Voice Agents",
+          "description": "How voice agents book appointments—and what to measure.",
+          "authorName": "Jordan H",
+          "image": "https://cdn.ing/assets/i/r/1/hero.webp",
+          "pubDate": 1782896400000
+        },
+        "dateFormat": "MMMM d, yyyy"
+      }
+    },
+    {
+      "name": "byline hidden — no hero, no category, no related, summary restates the title",
+      "wire": {
+        "id": 4301,
+        "token": "fixture-token-4301",
+        "slug": "quiet-update",
+        "title": "Quiet Update",
+        "summary": "Quiet Update",
+        "link_path": "/b/quiet-update",
+        "published_at": "2026-05-02T13:30:00Z",
+        "author": "Jordan H",
+        "image_url": null,
+        "image_alt": null,
+        "seo_title": null,
+        "seo_description": null,
+        "blog_category": null,
+        "blog_tags": [],
+        "body": "Just a paragraph with no headings at all.\n",
+        "body_format": "markdown",
+        "updated_at": "2026-05-02T13:35:00Z",
+        "related": [],
+        "article_layout": "article-bogus",
+        "site_blog": {
+          "index_path": "/news-room",
+          "show_byline": false
+        }
+      },
+      "expected_props": {
+        "enableTocTracking": false,
+        "enableBackToTop": false,
+        "markdownString": "Just a paragraph with no headings at all.\n",
+        "title": "Quiet Update",
+        "currentPage": "Quiet Update",
+        "breadcrumbs": [
+          {
+            "label": "Blog",
+            "href": "/news-room"
+          }
+        ],
+        "enableChapterTracking": false,
+        "tags": [],
+        "articles": [],
+        "post": {
+          "title": "Quiet Update",
+          "description": "Quiet Update"
+        },
+        "dateFormat": "MMMM d, yyyy"
+      }
+    },
+    {
+      "name": "unicode separators \u2014 U+2028 heading, BOM heading, BOM in the summary",
+      "_why": [
+        "Ruby and JS disagree on two string questions, and each disagreement was invisible on",
+        "first load (Ruby, always right) and wrong on SPA navigation:",
+        "  1. Ruby '.' excludes only \\n, JS '.' also excludes U+2028/U+2029 - so an H2 carrying a",
+        "     LINE SEPARATOR matched HEADING_LINE in Ruby and did not match in TS, and the whole",
+        "     TOC entry vanished after a click-through.",
+        "  2. Ruby [[:space:]] and JS /\\s/u differ on exactly U+0085 (Ruby only) and U+FEFF (JS",
+        "     only) - so a BOM inside a heading slugified to 'byte-order-mark' in TS and",
+        "     'byteorder-mark' in Ruby (a dead anchor), and a BOM inside the summary made TS think",
+        "     the summary restated the title and drop the standfirst the server had rendered.",
+        "Codepoints are written as \\u escapes so this file stays ASCII and the separators cannot",
+        "be lost by an editor."
+      ],
+      "wire": {
+        "id": 4401,
+        "token": "fixture-token-4401",
+        "slug": "unicode-separators",
+        "title": "Unicode Separators",
+        "summary": "Unicode\ufeffSeparators",
+        "link_path": "/b/unicode-separators",
+        "published_at": "2026-04-03T12:00:00Z",
+        "author": "Jordan H",
+        "image_url": null,
+        "image_alt": null,
+        "seo_title": null,
+        "seo_description": null,
+        "blog_category": null,
+        "blog_tags": [],
+        "body": "Intro paragraph.\n\n## Line\u2028Separated Heading\n\nBody text for the first section.\n\n## Byte\ufeffOrder Mark\n\nMore body text about parity.\n",
+        "body_format": "markdown",
+        "updated_at": "2026-04-03T12:05:00Z",
+        "related": [],
+        "article_layout": null,
+        "site_blog": {
+          "index_path": "/blog",
+          "show_byline": true
+        }
+      },
+      "expected_props": {
+        "enableTocTracking": false,
+        "enableBackToTop": false,
+        "markdownString": "Intro paragraph.\n\n## Line\u2028Separated Heading\n\nBody text for the first section.\n\n## Byte\ufeffOrder Mark\n\nMore body text about parity.\n",
+        "title": "Unicode Separators",
+        "currentPage": "Unicode Separators",
+        "breadcrumbs": [
+          {
+            "label": "Blog",
+            "href": "/blog"
+          }
+        ],
+        "enableChapterTracking": false,
+        "tags": [],
+        "articles": [],
+        "description": "Unicode\ufeffSeparators",
+        "subtitle": "Unicode\ufeffSeparators",
+        "summary": "Unicode\ufeffSeparators",
+        "publishDate": "Apr 3, 2026",
+        "authorName": "Jordan H",
+        "author": {
+          "name": "Jordan H"
+        },
+        "readTime": "1 min read",
+        "sections": [
+          {
+            "id": "line-separated-heading",
+            "title": "Line\u2028Separated Heading"
+          },
+          {
+            "id": "byteorder-mark",
+            "title": "Byte\ufeffOrder Mark"
+          }
+        ],
+        "chapters": [
+          {
+            "id": "line-separated-heading",
+            "number": 1,
+            "title": "Line\u2028Separated Heading"
+          },
+          {
+            "id": "byteorder-mark",
+            "number": 2,
+            "title": "Byte\ufeffOrder Mark"
+          }
+        ],
+        "post": {
+          "title": "Unicode Separators",
+          "description": "Unicode\ufeffSeparators",
+          "authorName": "Jordan H",
+          "pubDate": 1775217600000
+        },
+        "dateFormat": "MMMM d, yyyy"
+      }
+    }
+  ]
+}

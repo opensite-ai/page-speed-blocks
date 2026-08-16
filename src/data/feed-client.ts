@@ -20,6 +20,22 @@ import type {
 /** Upper bound for `per_page` (FEED_CONTRACT §3.2 — clamped client-side too). */
 export const MAX_PER_PAGE = 50;
 
+/**
+ * `per_page` requested for the TAXONOMY endpoints (`/feeds/blog_categories`, `/feeds/blog_tags`).
+ * These lists are consumed WHOLE — as filter chips (§2.4) and as the name→slug resolver for
+ * human-named `category`/`tag` filters (§2.3 rule 3) — so the shared 12-item list default would
+ * silently truncate a site with 13+ categories into missing chips and unresolvable filters.
+ * Asking for the contract maximum keeps the client and the (matching) server-side taxonomy
+ * default in lockstep; a site with more than 50 published categories is truncated identically on
+ * both sides. This is a NAMED taxonomy constant, not a hardcoded per_page (legacy bug #6).
+ */
+export const TAXONOMY_PER_PAGE = MAX_PER_PAGE;
+
+/** Query string shared by the taxonomy endpoints. */
+function buildTaxonomyQuery(): string {
+  return `?per_page=${TAXONOMY_PER_PAGE}`;
+}
+
 /** Preserve the legacy scalar wire key while using Rack array binding for multi-value filters. */
 function appendBlogFilter(
   query: URLSearchParams,
@@ -237,10 +253,14 @@ export function createFeedClient(options: CreateFeedClientOptions): FeedClient {
       );
     },
     listBlogCategories() {
-      return requestList<BlogFeedTaxonomy>(`${feedsRoot}/blog_categories`);
+      return requestList<BlogFeedTaxonomy>(
+        `${feedsRoot}/blog_categories${buildTaxonomyQuery()}`
+      );
     },
     listBlogTags() {
-      return requestList<BlogFeedTaxonomy>(`${feedsRoot}/blog_tags`);
+      return requestList<BlogFeedTaxonomy>(
+        `${feedsRoot}/blog_tags${buildTaxonomyQuery()}`
+      );
     },
     listInstagram(params: InstagramFeedParams = {}) {
       return requestList<InstagramFeedItem>(

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { createFeedClient, MAX_PER_PAGE } from "../data/feed-client.js";
+import {
+  createFeedClient,
+  MAX_PER_PAGE,
+  TAXONOMY_PER_PAGE,
+} from "../data/feed-client.js";
 import type { BlogFeedParams } from "../types/index.js";
 
 /** Record every requested URL and return a canned JSON body. */
@@ -32,12 +36,15 @@ describe("createFeedClient — URL building", () => {
     expect(calls[0]).toBe(
       "https://api.example.com/public_services/websites/site-token-123/feeds/blogs"
     );
+    // The taxonomy lists are consumed WHOLE (filter chips §2.4 + name→slug filter resolution
+    // §2.3 rule 3), so they always request the contract maximum instead of the 12-item default.
     expect(calls[1]).toBe(
-      "https://api.example.com/public_services/websites/site-token-123/feeds/blog_categories"
+      `https://api.example.com/public_services/websites/site-token-123/feeds/blog_categories?per_page=${TAXONOMY_PER_PAGE}`
     );
     expect(calls[2]).toBe(
-      "https://api.example.com/public_services/websites/site-token-123/feeds/blog_tags"
+      `https://api.example.com/public_services/websites/site-token-123/feeds/blog_tags?per_page=${TAXONOMY_PER_PAGE}`
     );
+    expect(TAXONOMY_PER_PAGE).toBe(MAX_PER_PAGE);
   });
 
   it("strips a trailing slash from baseUrl", async () => {

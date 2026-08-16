@@ -183,6 +183,189 @@ describe("resolveBlocks — empty vs error are distinct (§2.3 rule 5)", () => {
   });
 });
 
+/**
+ * R9 review fix: EMPTY clears the AUTHORED bind target (FEED_CONTRACT 2.3 rule 5).
+ *
+ * An `empty` outcome used to return the block untouched, assuming a feed-bound block carries no
+ * authored items. Legacy payloads carry the themed demo seed, so an empty feed rendered
+ * FABRICATED posts as the client's real content. LOCKSTEP with dashtrack-ai
+ * `Feeds::Hydrator#clear_empty_bind_target` and the dt-cms preview's `clearEmptyFeedItems`.
+ */
+describe("resolveBlocks: EMPTY empties the authored bind target (R9)", () => {
+  /** The fabricated seed a legacy design_payload still carries next to a live dataSource. */
+  const FABRICATED_POSTS = [
+    { id: 1, title: "Fabricated demo post", href: "/b/demo" },
+    { id: 2, title: "Second demo post", href: "/b/demo-2" },
+  ];
+
+  it("blog_feed empty: an authored posts array is emptied, other authored props survive", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "blog-grid-author-cards",
+      blockProps: { heading: "Latest", posts: FABRICATED_POSTS },
+      dataSource: { type: "blog_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out._feedMeta?.status).toBe("empty");
+    expect(out.blockProps?.posts).toEqual([]);
+    expect(out.blockProps?.heading).toBe("Latest"); // rule 2
+    expect(out.dataSource).toEqual({ type: "blog_feed" }); // rule 1
+  });
+
+  it("blog_feed empty on a wire-shaped block: clears `data`, never materializes blockProps", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      block_ref: "blog/blog-grid-author-cards",
+      data: { heading: "Latest", posts: FABRICATED_POSTS },
+      dataSource: { type: "blog_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.data?.posts).toEqual([]);
+    expect(out.data?.heading).toBe("Latest");
+    expect(out.blockProps).toBeUndefined();
+  });
+
+  it("testimonials_feed empty: an authored testimonials array is emptied", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-marquee",
+      blockProps: { testimonials: [{ quote: "Fabricated", author: "Nobody" }] },
+      dataSource: { type: "testimonials_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out._feedMeta?.reason).toBe("no_reviews");
+    expect(out.blockProps?.testimonials).toEqual([]);
+  });
+
+  it("single-bind empty: the OBJECT prop is DELETED (an object has no empty array form)", async () => {
+    const fetcher = routeFetcher([["/feeds/reviews", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "testimonials-large-quote",
+      blockProps: { testimonial: { quote: "Fabricated", author: "Nobody" }, heading: "Praise" },
+      dataSource: { type: "testimonials_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps && "testimonial" in out.blockProps).toBe(false);
+    expect(out.blockProps?.heading).toBe("Praise");
+  });
+
+  it("instagram_feed empty: an authored items array is emptied", async () => {
+    const fetcher = routeFetcher([["/feeds/instagram", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "instagram-post-grid",
+      blockProps: { items: [{ id: "1", image: "https://cdn.ing/fake.jpg" }] },
+      dataSource: { type: "instagram_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out._feedMeta?.reason).toBe("no_instagram_posts");
+    expect(out.blockProps?.items).toEqual([]);
+  });
+
+  it("blog_post 404: the authored bind target of the related-articles block is emptied", async () => {
+    const fetcher = routeFetcher([]); // every request 404s
+    const block: Block = {
+      _id: "1",
+      _type: "blog-related-articles",
+      blockProps: { articles: FABRICATED_POSTS },
+      dataSource: { type: "blog_post", slug: "gone", bindTo: "articles" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out._feedMeta?.reason).toBe("post_not_found");
+    expect(out.blockProps?.articles).toEqual([]);
+  });
+
+  it("never invents a bind target the block did not author", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "1",
+      _type: "blog-grid-author-cards",
+      blockProps: { heading: "Latest" },
+      dataSource: { type: "blog_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps && "posts" in out.blockProps).toBe(false);
+  });
+
+  it("ERROR is NOT empty: the authored array survives an upstream failure untouched", async () => {
+    const fetcher = routeFetcher([], true);
+    const block: Block = {
+      _id: "1",
+      _type: "blog-grid-author-cards",
+      blockProps: { posts: FABRICATED_POSTS },
+      dataSource: { type: "blog_feed" },
+    };
+
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out._feedMeta?.status).toBe("error");
+    expect(out.blockProps?.posts).toEqual(FABRICATED_POSTS);
+  });
+
+  it("a block with NO dataSource is authored content and is never cleared", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [], meta: null }]]);
+    const authored: Block = {
+      _id: "authored",
+      _type: "blog-grid-author-cards",
+      blockProps: { posts: FABRICATED_POSTS },
+    };
+    const bound: Block = {
+      _id: "bound",
+      _type: "blog-grid-author-cards",
+      blockProps: { posts: FABRICATED_POSTS },
+      dataSource: { type: "blog_feed" },
+    };
+
+    const out = await resolveBlocks([authored, bound], {
+      baseUrl: BASE,
+      websiteToken: TOKEN,
+      fetcher,
+    });
+
+    expect(out[0].blockProps?.posts).toEqual(FABRICATED_POSTS);
+    expect(out[0]._feedMeta).toBeUndefined();
+    expect(out[1].blockProps?.posts).toEqual([]);
+  });
+
+  it("EXPANDING events_feed empty: the symbolic block stays UNEXPANDED and is NOT cleared", async () => {
+    const fetcher = routeFetcher([["/feeds/events", { data: [], meta: null }]]);
+    const block: Block = {
+      _id: "blk_ev",
+      _type: "hero-event-registration",
+      blockProps: { heading: "Authored", posts: FABRICATED_POSTS },
+      dataSource: { type: "events_feed" },
+    };
+
+    const out = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out).toHaveLength(1);
+    expect(out[0]._id).toBe("blk_ev");
+    expect(out[0]._feedMeta?.reason).toBe("no_upcoming_events");
+    // No bind target exists for an expanding source; the generic "posts" fallback must not be
+    // mistaken for one (see resolveEventsFeed's R9 exception note).
+    expect(out[0].blockProps?.posts).toEqual(FABRICATED_POSTS);
+    expect(out[0].blockProps?.heading).toBe("Authored");
+  });
+});
+
 describe("resolveBlocks — gallery coercion (§2.4)", () => {
   it("skips items missing an image and coerces id to string", async () => {
     const noImage: BlogFeedItem = { ...sampleItem, id: 99, image_url: null };

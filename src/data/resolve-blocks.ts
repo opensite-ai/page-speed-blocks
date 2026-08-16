@@ -1,8 +1,11 @@
 import type {
   Block,
+  BlogCategoryChip,
   BlogFeedParams,
+  BlogFeedTaxonomy,
   BlogPostItem,
   DataSource,
+  FeedClient,
   EventFeedItem,
   EventFeedParams,
   FeedMeta,
@@ -16,9 +19,13 @@ import type {
   ReviewFeedParams,
   ReviewItem,
 } from "../types/index.js";
+import {
+  allowListedArticleLayout,
+  mapBlogDetailToArticleProps,
+  rubyPosixTrim,
+} from "./article-props.js";
 import { createFeedClient } from "./feed-client.js";
 import {
-  mapBlogFeedDetail,
   mapBlogFeedItem,
   mapEventFeedItem,
   mapInstagramFeedItem,
@@ -78,6 +85,113 @@ export const SINGLE_BIND_TARGETS: Record<string, string> = {
 
 /** Final fallback bind target (FEED_CONTRACT §2.3 rule 6). */
 export const DEFAULT_BIND_TARGET = "posts";
+
+/**
+ * SECOND bind target on a `blog_feed` block: the category filter chips (FEED_CONTRACT §2.4, R9).
+ * Same mechanism as `blog-tech-insights`' side-set `featuredPost`, except this one always
+ * OVERRIDES the authored array — on a FEED-BOUND block the authored chips are a themed copy of
+ * the demo seed (Healthcare/Hospitality/Dental…) with nothing to do with the site's real
+ * taxonomy, so hydrated data wins (§2.3 rule 2).
+ *
+ * SCOPE — read before "improving" this. The override reaches only blocks that carry a
+ * `dataSource`, because that is the only signal that the posts are hydrated. A census of
+ * production on 2026-08-16 found 21 live `blog-filtered-results` blocks: exactly ONE is
+ * `blog_feed`-bound (and it is the fabricated-chips bug); the other 20 are hardcoded-content
+ * pages, 15 of which author BOTH `posts` and `categories` — chips that are consistent with the
+ * posts sitting next to them. Overriding those with the site taxonomy would filter authored
+ * posts by categories they do not have. So this bind fixes the feed-bound blocks with no
+ * payload regeneration, and the unbound onboarding-era blog pages are a
+ * regenerate-existing-sites item, not something hydration can repair.
+ *
+ * LOCKSTEP with dashtrack-ai `Feeds::Hydrator::BLOG_CATEGORY_BIND_TARGETS`.
+ */
+export const BLOG_CATEGORY_BIND_TARGETS: Record<string, string> = {
+  "blog-filtered-results": "categories",
+};
+
+/**
+ * The "show everything" chip prepended to every non-empty hydrated chip list. It belongs in
+ * HYDRATION (not the component) because the block's default selection is already `["all"]` and
+ * the authored arrays it replaces carry their own `All` entry — emitting it here keeps the two
+ * hydration implementations the single source of the chip list and needs no `@opensite/ui`
+ * release. LOCKSTEP with dashtrack-ai `Feeds::Hydrator::ALL_CATEGORY_CHIP`.
+ */
+export const ALL_CATEGORY_CHIP: BlogCategoryChip = { label: "All", value: "all" };
+
+/**
+ * Build the `categories` chip array from the site's blog-category taxonomy (§3.1
+ * `/feeds/blog_categories`, already filtered to categories with ≥1 currently-published post).
+ *
+ * Rules (LOCKSTEP with dashtrack-ai `Feeds::Hydrator#blog_category_chips`):
+ *   • `label` is the category NAME verbatim; `value` is `name.toLowerCase()` — the block
+ *     compares `post.category.toLowerCase()` against `value` and hydrated posts carry the NAME
+ *     (`blog_category.name`), so any other value silently filters to nothing.
+ *   • blank names are skipped, and values are de-duplicated case-insensitively (two categories
+ *     differing only in case would otherwise collide on the React `key={category.value}`).
+ *   • an empty result stays EMPTY — no `All`-only chip bar, and never a fabricated category.
+ *
+ * Ruby/JS string semantics (4.3): the hydrator trims category names with Ruby `[[:space:]]`
+ * (`Feeds::Hydrator#published_category_names`), so this side trims with `rubyPosixTrim`, NOT
+ * `String.trim()`. The two sets differ on exactly two codepoints - U+0085 NEL (Ruby yes, JS no)
+ * and U+FEFF BOM (Ruby no, JS yes) - so `.trim()` gave a BOM-wrapped category a different LABEL
+ * (and therefore a different `value`, and a different React key) on the server and the client.
+ * `toLowerCase()` and Ruby `String#downcase` are both full Unicode case mappings and agree on
+ * every storable name, so only the trim needed aligning.
+ */
+export function blogCategoryChips(
+  taxonomy: BlogFeedTaxonomy[]
+): BlogCategoryChip[] {
+  const chips: BlogCategoryChip[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of taxonomy) {
+    const name = typeof entry?.name === "string" ? rubyPosixTrim(entry.name) : "";
+    if (!name) continue;
+    const value = name.toLowerCase();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    chips.push({ label: name, value });
+  }
+
+  if (chips.length === 0) return [];
+  return [ALL_CATEGORY_CHIP, ...chips];
+}
+
+/**
+ * Write ONLY the `categories` bind (no post items) — the empty-feed path, where the block keeps
+ * every other authored prop but must not keep fabricated filter chips.
+ */
+function inlineBlogCategoryChips(
+  block: Block,
+  categoryChips: BlogCategoryChip[] | null
+): Block {
+  const target = BLOG_CATEGORY_BIND_TARGETS[blockType(block)];
+  if (!target || !categoryChips) return block;
+
+  const props = writeContainer(block);
+  props[target] = categoryChips;
+  return withContainer(block, props);
+}
+
+/**
+ * Fetch the category chips for a block that renders a category filter bar; `null` for every
+ * other block type (so the taxonomy endpoint is only called when a chip-bearing block is
+ * actually present on the page).
+ *
+ * A taxonomy fetch that fails or returns nothing yields an EMPTY array, which makes the block
+ * render no filter bar at all (`categories.length === 0` → the component returns `null`). That
+ * is deliberate: leaving the authored array in place would re-display fabricated chips, which
+ * §2.3 rule 5 forbids. The post list itself is unaffected.
+ */
+async function fetchBlogCategoryChips(
+  block: Block,
+  client: FeedClient
+): Promise<BlogCategoryChip[] | null> {
+  if (!BLOG_CATEGORY_BIND_TARGETS[blockType(block)]) return null;
+
+  const response = await client.listBlogCategories();
+  return response.error ? [] : blogCategoryChips(response.data);
+}
 
 /** Gallery blocks require coerced carousel items (FEED_CONTRACT §2.4). */
 const GALLERY_BLOCK_TYPES = new Set([
@@ -161,6 +275,38 @@ export function resolveBindTarget(block: Block): string {
   );
 }
 
+/**
+ * Empty the bind target of a feed-bound block whose source resolved to ZERO items (R9).
+ *
+ * This pass used to be missing: an `empty` outcome returned the block UNTOUCHED, on the assumption
+ * that a feed-bound block carries no authored items in the first place (the generator strips them
+ * when it wires the source). Legacy payloads break that assumption - they still carry the themed
+ * demo seed - so on an empty feed the block rendered FABRICATED posts as if they were the site's
+ * real content, which FEED_CONTRACT 2.3 rule 5 ("Never fabricate items") forbids. Clearing the
+ * target makes "no items" true rather than assumed, and lets the block's natural empty state run.
+ *
+ * Semantics (LOCKSTEP - dashtrack-ai `Feeds::Hydrator#clear_empty_bind_target` and the dt-cms
+ * preview's `clearEmptyFeedItems`):
+ *   - only a target the block ALREADY authored is touched; an absent target is left absent, so
+ *     hydration never invents a prop the block did not declare;
+ *   - single-bind blocks (`testimonial`, an object not an array) have no empty value, so the prop
+ *     is DELETED rather than set to `[]`;
+ *   - every other authored prop survives (2.3 rule 2), and `dataSource` is retained (rule 1).
+ *
+ * NOT applied to the EXPANDING `events_feed` source (4.1d, D6) - see `resolveEventsFeed`.
+ */
+function clearEmptyBindTarget(block: Block, bindTarget: string): Block {
+  const props = writeContainer(block);
+  if (!(bindTarget in props)) return block;
+
+  if (blockType(block) in SINGLE_BIND_TARGETS) {
+    delete props[bindTarget];
+  } else {
+    props[bindTarget] = [];
+  }
+  return withContainer(block, props);
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -206,13 +352,15 @@ function dataSourceToBlogParams(source: DataSource): BlogFeedParams {
 
 /**
  * Inline resolved `BlogPostItem[]` into the bind target, applying the §2.4 special cases.
- * Only the bind target (and, for tech-insights, an unset `featuredPost`) is written — every
- * other authored prop is untouched (FEED_CONTRACT §2.3 rule 2).
+ * Only the bind target (plus, for tech-insights, an unset `featuredPost`, and for chip blocks
+ * the `categories` bind) is written — every other authored prop is untouched (FEED_CONTRACT
+ * §2.3 rule 2).
  */
 function inlineBlogItems(
   block: Block,
   bindTarget: string,
-  items: BlogPostItem[]
+  items: BlogPostItem[],
+  categoryChips: BlogCategoryChip[] | null
 ): Block {
   const props = writeContainer(block);
   const type = blockType(block);
@@ -234,6 +382,14 @@ function inlineBlogItems(
     finalItems.length > 0
   ) {
     props.featuredPost = finalItems[0];
+  }
+
+  // blog-filtered-results: OVERRIDE the authored category chips with the site's real taxonomy
+  // (§2.4, R9) — unlike featuredPost this write is unconditional, because the authored array is
+  // exactly the fabricated demo seed we are replacing.
+  const categoryTarget = BLOG_CATEGORY_BIND_TARGETS[type];
+  if (categoryTarget && categoryChips) {
+    props[categoryTarget] = categoryChips;
   }
 
   return withContainer(block, props);
@@ -263,9 +419,20 @@ const resolveBlogFeed: FeedSourceResolver = async ({
   }
 
   const items = response.data.map(mapBlogFeedItem);
+
+  // The chips bind is resolved for BOTH the ok and the empty outcome (§2.4, R9): a filter bar
+  // advertising fabricated categories is wrong whether or not the post query came back empty.
+  // Only an upstream ERROR leaves the block's authored props completely untouched.
+  const categoryChips = await fetchBlogCategoryChips(block, client);
+
   if (items.length === 0) {
+    // Clear FIRST, then write the chips: the chip bind is a SECOND target on the same block, and
+    // clearing after it would blank the chips on a payload that (pathologically) points `bindTo`
+    // at `categories`. The dt-cms preview orders these two the same way.
+    const cleared = clearEmptyBindTarget(block, bindTarget);
+    const emptied = inlineBlogCategoryChips(cleared, categoryChips);
     return [
-      withFeedMeta(block, {
+      withFeedMeta(emptied, {
         status: "empty",
         reason: "no_published_posts",
         source: "blog_feed",
@@ -274,7 +441,7 @@ const resolveBlogFeed: FeedSourceResolver = async ({
     ];
   }
 
-  const inlined = inlineBlogItems(block, bindTarget, items);
+  const inlined = inlineBlogItems(block, bindTarget, items, categoryChips);
   return [withFeedMeta(inlined, okMeta("blog_feed", response.meta))];
 };
 
@@ -318,7 +485,7 @@ const resolveInstagramFeed: FeedSourceResolver = async ({
 
   if (items.length === 0) {
     return [
-      withFeedMeta(block, {
+      withFeedMeta(clearEmptyBindTarget(block, bindTarget), {
         status: "empty",
         reason: "no_instagram_posts",
         source: "instagram_feed",
@@ -434,7 +601,7 @@ const resolveReviewsFeed: FeedSourceResolver = async ({
 
   if (response.data.length === 0) {
     return [
-      withFeedMeta(block, {
+      withFeedMeta(clearEmptyBindTarget(block, bindTarget), {
         status: "empty",
         reason: "no_reviews",
         source: "testimonials_feed",
@@ -450,7 +617,7 @@ const resolveReviewsFeed: FeedSourceResolver = async ({
   // `items.empty?` → `status: 'empty', reason: 'no_reviews'` (EMPTY_REASON).
   if (inlined === null) {
     return [
-      withFeedMeta(block, {
+      withFeedMeta(clearEmptyBindTarget(block, bindTarget), {
         status: "empty",
         reason: "no_reviews",
         source: "testimonials_feed",
@@ -562,6 +729,16 @@ function mintEventBlock(sourceBlock: Block, item: EventFeedItem, position: numbe
  * (`no_upcoming_events`) or error (`upstream_error`) the ORIGINAL symbolic block stays in place
  * UNEXPANDED with the usual `_feedMeta`, so the empty / error renderers work unchanged (§2.3
  * rule 5 — empty / error are first-class and there is no wrapper-block concept).
+ *
+ * R9 EMPTY-CLEARING EXCEPTION (decided 2026-08-16, lockstep with the Ruby hydrator). An empty
+ * outcome here does NOT run `clearEmptyBindTarget`. An expanding source has no bind target at
+ * all - it mints block INSTANCES rather than writing a prop, which is why
+ * `hero-event-registration` has no `DEFAULT_BIND_TARGETS` entry on either side. Running the clear
+ * would therefore fall through to the generic `"posts"` fallback and blank a prop by accident of
+ * the fallback rather than by contract. Nothing can be fabricated here either: an unexpanded
+ * symbolic block renders its own authored empty state, and no feed items were ever written into
+ * it. The dt-cms preview's generic `clearEmptyFeedItems` reaches the same outcome by a different
+ * route (its `target in container` guard makes an event block a no-op), so all three agree.
  */
 const resolveEventsFeed: FeedSourceResolver = async ({ block, dataSource, client }) => {
   const response = await client.listEvents(dataSourceToEventParams(dataSource));
@@ -603,15 +780,33 @@ function lastPathSegment(path?: string): string | undefined {
 }
 
 /**
+ * The PRIMARY current-post block is the one WITHOUT a `bindTo` (it hydrates the article itself).
+ * The related-articles block declares `bindTo: "articles"`, so it is never treated as primary and
+ * never has its `_type` swapped. Lockstep with `BlogDetailEntry#primary_article_block?`.
+ */
+function isPrimaryArticleBlock(source: DataSource): boolean {
+  const bindTo = source.bindTo;
+  return typeof bindTo !== "string" || bindTo.trim().length === 0;
+}
+
+/**
  * Built-in `blog_post` resolver (detail). Resolves the slug from `dataSource.slug` or, for
  * `current: true`, from the last path segment (the route-pattern match is the host app's job —
  * FEED_CONTRACT §5.3), fetches the detail, and inlines the §4.3 props.
+ *
+ * R9: this used to write 8 THIN flat props (`title, markdownString, author (a string), date,
+ * image, imageAlt, tags, articles`), of which the six `@opensite/ui` article layouts declare
+ * exactly two — so a SPA click-through from /blog rendered a bare article (no breadcrumb, hero,
+ * byline or TOC) until the visitor hard-refreshed. It now writes the FAT union superset
+ * (`mapBlogDetailToArticleProps`, the mirror of customer-sites `BlogDetailEntry`) and applies the
+ * per-post layout override, so SPA navigation renders byte-identically to first load.
  */
 const resolveBlogPost: FeedSourceResolver = async ({
   block,
   dataSource,
   client,
   path,
+  bindTarget,
 }) => {
   const slug =
     typeof dataSource.slug === "string" && dataSource.slug.length > 0
@@ -638,7 +833,7 @@ const resolveBlogPost: FeedSourceResolver = async ({
     // (FEED_CONTRACT §2.3 rule 5), so a 404 must never collapse into upstream_error.
     if (response.error.status === 404) {
       return [
-        withFeedMeta(block, {
+        withFeedMeta(clearEmptyBindTarget(block, bindTarget), {
           status: "empty",
           reason: "post_not_found",
           source: "blog_post",
@@ -658,7 +853,7 @@ const resolveBlogPost: FeedSourceResolver = async ({
   // Defensive fallback: a 2xx with no `data` payload is still "not found".
   if (!response.data) {
     return [
-      withFeedMeta(block, {
+      withFeedMeta(clearEmptyBindTarget(block, bindTarget), {
         status: "empty",
         reason: "post_not_found",
         source: "blog_post",
@@ -667,20 +862,27 @@ const resolveBlogPost: FeedSourceResolver = async ({
     ];
   }
 
-  const detail = mapBlogFeedDetail(response.data);
-  const props = writeContainer(block);
-  // §4.3 detail mapping — these are the dynamic content props for the article block.
-  props.title = detail.title;
-  props.markdownString = detail.markdownString;
-  props.author = detail.author;
-  props.date = detail.date;
-  props.image = detail.image;
-  props.imageAlt = detail.imageAlt;
-  props.tags = detail.tags;
-  props.articles = detail.articles;
+  // §4.3 detail mapping — the FAT union superset every article layout renders from. Merged OVER
+  // the template's authored props, exactly as Ruby's
+  // `blockProps.merge(article_props)` does on first load.
+  const props = Object.assign(
+    writeContainer(block),
+    mapBlogDetailToArticleProps(response.data)
+  ) as Record<string, unknown>;
+
+  let hydrated = withContainer(block, props);
+
+  // Per-post layout override (FEED_CONTRACT §5.3 precedence: per-blog → site default →
+  // `article-breadcrumb-social`). The SITE default is already baked into the template's `_type`
+  // by dashtrack-ai, so only an allow-listed PER-POST value overrides it here — an unknown or
+  // absent id leaves the template's `_type` untouched and can never emit an unrenderable type.
+  const layout = allowListedArticleLayout(response.data.article_layout);
+  if (layout && typeof block._type === "string" && isPrimaryArticleBlock(dataSource)) {
+    hydrated = { ...hydrated, _type: layout };
+  }
 
   return [
-    withFeedMeta(withContainer(block, props), {
+    withFeedMeta(hydrated, {
       status: "ok",
       source: "blog_post",
       resolvedAt: nowIso(),
@@ -713,11 +915,20 @@ export async function resolveBlocks(
   blocks: Block[],
   options: ResolveBlocksOptions
 ): Promise<Block[]> {
-  const client = createFeedClient({
+  const baseClient = createFeedClient({
     baseUrl: options.baseUrl,
     websiteToken: options.websiteToken,
     fetcher: options.fetcher,
   });
+
+  // The blog-category taxonomy is a per-PASS constant (§2.4 chips), and blocks resolve in
+  // parallel, so memoize it: N chip blocks on one page issue ONE request, mirroring the
+  // dashtrack-ai hydrator's per-build `taxonomy` memo.
+  let taxonomyRequest: ReturnType<FeedClient["listBlogCategories"]> | null = null;
+  const client: FeedClient = {
+    ...baseClient,
+    listBlogCategories: () => (taxonomyRequest ??= baseClient.listBlogCategories()),
+  };
 
   const sources: Record<string, FeedSourceResolver> = {
     ...BUILT_IN_SOURCES,
