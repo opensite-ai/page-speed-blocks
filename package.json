@@ -1,6 +1,6 @@
 {
   "name": "@page-speed/blocks",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "High-performance rendering runtime for @opensite/ui components with pre-compiled Tailwind CSS and tree-shakable architecture",
   "keywords": [
     "react",
@@ -100,7 +100,7 @@
     "prepublishOnly": "pnpm run test && pnpm run build"
   },
   "dependencies": {
-    "@opensite/ui": "3.15.0",
+    "@opensite/ui": "3.15.1",
     "@page-speed/img": "0.4.10",
     "@page-speed/pressable": "^0.1.1",
     "@page-speed/router": "^1.2.1",
