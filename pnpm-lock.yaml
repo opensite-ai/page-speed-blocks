@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@opensite/ui':
-        specifier: 3.15.3
-        version: 3.15.3(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: 3.15.5
+        version: 3.15.5(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@page-speed/img':
         specifier: 0.4.10
         version: 0.4.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -496,8 +496,8 @@ packages:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
 
-  '@opensite/ui@3.15.3':
-    resolution: {integrity: sha512-jOfJUSek+C33vQUm6bKQE/hgAVyDhrrZiatOtfdytfGDfFCqWL/N9JPUPZE9AmWKzVIJO4hW28ynKd+0fjMCDQ==}
+  '@opensite/ui@3.15.5':
+    resolution: {integrity: sha512-Pu05rxOV1GeSohnqdFSjB/H+a9JKC9iGrpK2FGCrx8yHGGy/s/PzYHt+yf0RtM8Z/ob3nRR5J7QF/jc+MCmhtQ==}
     engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
     peerDependencies:
       '@page-speed/pressable': 0.1.2
@@ -3599,7 +3599,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@opensite/ui@3.15.3(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@opensite/ui@3.15.5(@page-speed/pressable@0.1.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@page-speed/router@1.2.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(embla-carousel@8.6.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       '@opensite/hooks': 2.1.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@page-speed/forms': 0.8.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
