@@ -106,9 +106,9 @@ describe("blogCategoryChips", () => {
   it("emits an All entry plus {label: name, value: name.toLowerCase()} in taxonomy order", () => {
     expect(blogCategoryChips(TAXONOMY)).toEqual([
       { label: "All", value: "all" },
-      { label: "AI Automation Strategy", value: "ai automation strategy" },
-      { label: "AI sales automation", value: "ai sales automation" },
-      { label: "Business book reviews", value: "business book reviews" },
+      { label: "AI Automation Strategy", value: "ai automation strategy", slug: "ai-automation-strategy" },
+      { label: "AI sales automation", value: "ai sales automation", slug: "ai-sales-automation" },
+      { label: "Business book reviews", value: "business book reviews", slug: "business-book-reviews" },
     ]);
   });
 
@@ -125,7 +125,7 @@ describe("blogCategoryChips", () => {
     ]);
     expect(chips).toEqual([
       ALL_CATEGORY_CHIP,
-      { label: "AI Sales Automation", value: "ai sales automation" },
+      { label: "AI Sales Automation", value: "ai sales automation", slug: "a" },
     ]);
   });
 
@@ -154,7 +154,7 @@ describe("blogCategoryChips", () => {
       const name = `${ZWNBSP}Dental${ZWNBSP}`;
       expect(blogCategoryChips([{ name, slug: "dental" }])).toEqual([
         ALL_CATEGORY_CHIP,
-        { label: name, value: name.toLowerCase() },
+        { label: name, value: name.toLowerCase(), slug: "dental" },
       ]);
     });
 
@@ -162,13 +162,13 @@ describe("blogCategoryChips", () => {
       // The mirror-image case: JS `\s` (and therefore `.trim()`) does NOT contain U+0085.
       expect(
         blogCategoryChips([{ name: `${NEXT_LINE}Dental${NEXT_LINE}`, slug: "dental" }])
-      ).toEqual([ALL_CATEGORY_CHIP, { label: "Dental", value: "dental" }]);
+      ).toEqual([ALL_CATEGORY_CHIP, { label: "Dental", value: "dental", slug: "dental" }]);
     });
 
     it("still trims the members both languages agree on, and drops all-space names", () => {
       expect(
         blogCategoryChips([{ name: `${NBSP}Dental${IDEOGRAPHIC}`, slug: "dental" }])
-      ).toEqual([ALL_CATEGORY_CHIP, { label: "Dental", value: "dental" }]);
+      ).toEqual([ALL_CATEGORY_CHIP, { label: "Dental", value: "dental", slug: "dental" }]);
       expect(
         blogCategoryChips([{ name: `${NEXT_LINE}${NBSP}${IDEOGRAPHIC}`, slug: "x" }])
       ).toEqual([]);
@@ -191,9 +191,9 @@ describe("resolveBlocks — blog_feed categories bind (§2.4)", () => {
 
     expect(resolved.blockProps?.categories).toEqual([
       { label: "All", value: "all" },
-      { label: "AI Automation Strategy", value: "ai automation strategy" },
-      { label: "AI sales automation", value: "ai sales automation" },
-      { label: "Business book reviews", value: "business book reviews" },
+      { label: "AI Automation Strategy", value: "ai automation strategy", slug: "ai-automation-strategy" },
+      { label: "AI sales automation", value: "ai sales automation", slug: "ai-sales-automation" },
+      { label: "Business book reviews", value: "business book reviews", slug: "business-book-reviews" },
     ]);
     // Every other authored prop survives (§2.3 rule 2).
     expect(resolved.blockProps?.heading).toBe(

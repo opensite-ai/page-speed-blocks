@@ -322,6 +322,13 @@ export interface BlogPostItem {
 export interface BlogCategoryChip {
   label: string;
   value: string;
+  /**
+   * Category slug (TASK-6 §2, additive): lets the block write the platform's
+   * `?category_slug=` URL filter on chip selection — `value` (the downcased
+   * NAME) cannot, because the server filters by slug. Absent on the `All` chip
+   * (selecting it removes the URL param) and on pre-slug hydrated payloads.
+   */
+  slug?: string;
 }
 
 /**

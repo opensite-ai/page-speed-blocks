@@ -403,6 +403,91 @@ describe("resolveBlocks — blog-tech-insights featuredPost (§2.4)", () => {
   });
 });
 
+// TASK-6 §2: the featured hero slot on blog-filtered-results. LOCKSTEP with
+// dashtrack-ai Feeds::Hydrator#set_filtered_results_primary — unlike
+// tech-insights' respect-if-set featuredPost, this bind always OVERRIDES the
+// authored value (an authored primaryPost on a feed-bound block is fabricated
+// demo content, same rationale as the category chips).
+describe("resolveBlocks — blog-filtered-results primaryPost (TASK-6 §2)", () => {
+  const secondItem: BlogFeedItem = {
+    ...sampleItem,
+    id: 13,
+    slug: "second-post",
+    title: "Second post",
+    link_path: "/b/second-post",
+    published_at: "2026-06-01T09:00:00Z",
+  };
+
+  function filteredResultsBlock(props: Record<string, unknown> = {}, ds: DataSource = { type: "blog_feed" }): Block {
+    return {
+      _id: "blk_fr",
+      _type: "blog-filtered-results",
+      blockProps: { heading: "Insights", ...props },
+      dataSource: ds,
+    };
+  }
+
+  it("binds the newest post to primaryPost and the REST to posts (>= 2 items, page 1)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem, secondItem], meta: null }]]);
+    const [out] = await resolveBlocks([filteredResultsBlock()], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect((out.blockProps?.primaryPost as Record<string, unknown>).title).toBe("Grand opening");
+    expect((out.blockProps?.posts as Array<Record<string, unknown>>).map((p) => p.title)).toEqual(["Second post"]);
+  });
+
+  it("OVERRIDES an authored primaryPost (fabrication, like the chips)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem, secondItem], meta: null }]]);
+    const block = filteredResultsBlock({ primaryPost: { title: "Fabricated demo post" } });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect((out.blockProps?.primaryPost as Record<string, unknown>).title).toBe("Grand opening");
+  });
+
+  it("clears primaryPost and keeps every item in the grid when the feed has ONE post", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem], meta: null }]]);
+    const block = filteredResultsBlock({ primaryPost: { title: "Fabricated demo post" } });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps).not.toHaveProperty("primaryPost");
+    expect((out.blockProps?.posts as Array<Record<string, unknown>>).map((p) => p.title)).toEqual(["Grand opening"]);
+  });
+
+  it("never binds primaryPost beyond page 1 (a later page must not rotate the hero)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem, secondItem], meta: null }]]);
+    const block = filteredResultsBlock({}, { type: "blog_feed", limit: 12, offset: 12 });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps).not.toHaveProperty("primaryPost");
+    expect(out.blockProps?.posts).toHaveLength(2);
+  });
+
+  it("clears an authored primaryPost on an EMPTY feed (§2.3 rule 5)", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [], meta: null }]]);
+    const block = filteredResultsBlock({ primaryPost: { title: "Fabricated demo post" } });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps).not.toHaveProperty("primaryPost");
+    expect(out._feedMeta?.status).toBe("empty");
+  });
+
+  it("does not write primaryPost when bindTo overrides the default target", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem, secondItem], meta: null }]]);
+    const block = filteredResultsBlock({}, { type: "blog_feed", bindTo: "customList" });
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps).not.toHaveProperty("primaryPost");
+    expect(out.blockProps?.customList).toHaveLength(2);
+  });
+
+  it("never writes primaryPost on other blog blocks", async () => {
+    const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem, secondItem], meta: null }]]);
+    const block: Block = { _id: "1", _type: "blog-grid-author-cards", dataSource: { type: "blog_feed" } };
+    const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
+
+    expect(out.blockProps).not.toHaveProperty("primaryPost");
+  });
+});
+
 describe("resolveBlocks — blog_post detail (§4.3)", () => {
   const detail: BlogFeedDetailItem = {
     ...sampleItem,

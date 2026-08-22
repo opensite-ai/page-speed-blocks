@@ -110,6 +110,24 @@ export const BLOG_CATEGORY_BIND_TARGETS: Record<string, string> = {
 };
 
 /**
+ * THIRD bind target on a `blog_feed` block (TASK-6 §2): the featured hero slot. Hydration never
+ * populated `primaryPost`, so the slot was dead on every feed-bound page. Like the chips (and
+ * unlike blog-tech-insights' respect-if-set `featuredPost`) this write always OVERRIDES the
+ * authored value — on a FEED-BOUND block an authored primaryPost is fabricated demo content.
+ *
+ * Rules (LOCKSTEP with dashtrack-ai `Feeds::Hydrator#set_filtered_results_primary`):
+ *   • DEFAULT `posts` bind only (an explicit `bindTo` override opts out);
+ *   • page 1 only (offset absent or 0) — a later page must not rotate the hero to that page's
+ *     newest item;
+ *   • needs ≥ 2 items: the newest becomes `primaryPost` and the grid gets the REST (no duplicate
+ *     card, no empty grid). With 0-1 items the slot is CLEARED and every item stays in the grid —
+ *     a single-post site deliberately renders its post as a grid card, not a lonely hero.
+ */
+export const BLOG_PRIMARY_POST_BIND_TARGETS: Record<string, string> = {
+  "blog-filtered-results": "primaryPost",
+};
+
+/**
  * The "show everything" chip prepended to every non-empty hydrated chip list. It belongs in
  * HYDRATION (not the component) because the block's default selection is already `["all"]` and
  * the authored arrays it replaces carry their own `All` entry — emitting it here keeps the two
@@ -150,7 +168,11 @@ export function blogCategoryChips(
     const value = name.toLowerCase();
     if (seen.has(value)) continue;
     seen.add(value);
-    chips.push({ label: name, value });
+    // TASK-6 §2: the SLUG lets the block write the platform's `?category_slug=`
+    // URL filter on chip selection — `value` (downcased NAME) cannot, because
+    // the server filters by slug. Additive; the `All` chip carries none.
+    const slug = typeof entry?.slug === "string" ? entry.slug : "";
+    chips.push(slug ? { label: name, value, slug } : { label: name, value });
   }
 
   if (chips.length === 0) return [];
@@ -392,6 +414,35 @@ function inlineBlogItems(
     props[categoryTarget] = categoryChips;
   }
 
+  // blog-filtered-results: featured hero bind (TASK-6 §2). Always an override —
+  // see BLOG_PRIMARY_POST_BIND_TARGETS for the rules.
+  const primaryTarget = BLOG_PRIMARY_POST_BIND_TARGETS[type];
+  if (primaryTarget) {
+    const offset = typeof block.dataSource?.offset === "number" ? block.dataSource.offset : 0;
+    if (bindTarget === DEFAULT_BIND_TARGET && offset === 0 && finalItems.length >= 2) {
+      props[primaryTarget] = finalItems[0];
+      props[bindTarget] = finalItems.slice(1);
+    } else {
+      delete props[primaryTarget];
+    }
+  }
+
+  return withContainer(block, props);
+}
+
+/**
+ * Delete an authored `primaryPost` on the EMPTY outcome (TASK-6 §2) — with zero real posts the
+ * featured slot must render empty, never a fabricated item. Mirrors `clearEmptyBindTarget`'s
+ * only-touch-what-was-authored rule.
+ */
+function clearPrimaryPost(block: Block): Block {
+  const target = BLOG_PRIMARY_POST_BIND_TARGETS[blockType(block)];
+  if (!target) return block;
+
+  const props = writeContainer(block);
+  if (!(target in props)) return block;
+
+  delete props[target];
   return withContainer(block, props);
 }
 
@@ -431,8 +482,10 @@ const resolveBlogFeed: FeedSourceResolver = async ({
     // at `categories`. The dt-cms preview orders these two the same way.
     const cleared = clearEmptyBindTarget(block, bindTarget);
     const emptied = inlineBlogCategoryChips(cleared, categoryChips);
+    // An authored primaryPost is fabricated content on a feed-bound block (TASK-6 §2).
+    const withoutPrimary = clearPrimaryPost(emptied);
     return [
-      withFeedMeta(emptied, {
+      withFeedMeta(withoutPrimary, {
         status: "empty",
         reason: "no_published_posts",
         source: "blog_feed",
