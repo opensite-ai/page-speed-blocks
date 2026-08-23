@@ -443,13 +443,15 @@ describe("resolveBlocks — blog-filtered-results primaryPost (TASK-6 §2)", () 
     expect((out.blockProps?.primaryPost as Record<string, unknown>).title).toBe("Grand opening");
   });
 
-  it("clears primaryPost and keeps every item in the grid when the feed has ONE post", async () => {
+  it("binds a SINGLE post to primaryPost and leaves the grid empty (owner directive 2026-08-22)", async () => {
+    // "As long as there is at least one blog post, it should always have the
+    // latest blog post here" — landinglab.ai/blog (1 post, empty hero).
     const fetcher = routeFetcher([["/feeds/blogs", { data: [sampleItem], meta: null }]]);
     const block = filteredResultsBlock({ primaryPost: { title: "Fabricated demo post" } });
     const [out] = await resolveBlocks([block], { baseUrl: BASE, websiteToken: TOKEN, fetcher });
 
-    expect(out.blockProps).not.toHaveProperty("primaryPost");
-    expect((out.blockProps?.posts as Array<Record<string, unknown>>).map((p) => p.title)).toEqual(["Grand opening"]);
+    expect((out.blockProps?.primaryPost as Record<string, unknown>).title).toBe("Grand opening");
+    expect(out.blockProps?.posts).toEqual([]);
   });
 
   it("never binds primaryPost beyond page 1 (a later page must not rotate the hero)", async () => {

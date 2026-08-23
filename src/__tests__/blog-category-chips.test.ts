@@ -280,9 +280,10 @@ describe("resolveBlocks — blog_feed categories bind (§2.4)", () => {
     });
 
     expect(resolved.blockProps?.categories).toEqual([]);
+    // Single-item feed: the newest post now rides the primaryPost hero bind.
     expect(
-      (resolved.blockProps?.posts as unknown[] | undefined)?.length
-    ).toBe(1);
+      (resolved.blockProps?.primaryPost as Record<string, unknown>).title
+    ).toBe("AI sales automation for SMBs");
     expect(resolved._feedMeta?.status).toBe("ok");
   });
 

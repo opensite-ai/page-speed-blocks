@@ -1,6 +1,6 @@
 {
   "name": "@page-speed/blocks",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "description": "High-performance rendering runtime for @opensite/ui components with pre-compiled Tailwind CSS and tree-shakable architecture",
   "keywords": [
     "react",

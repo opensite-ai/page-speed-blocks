@@ -119,9 +119,10 @@ export const BLOG_CATEGORY_BIND_TARGETS: Record<string, string> = {
  *   • DEFAULT `posts` bind only (an explicit `bindTo` override opts out);
  *   • page 1 only (offset absent or 0) — a later page must not rotate the hero to that page's
  *     newest item;
- *   • needs ≥ 2 items: the newest becomes `primaryPost` and the grid gets the REST (no duplicate
- *     card, no empty grid). With 0-1 items the slot is CLEARED and every item stays in the grid —
- *     a single-post site deliberately renders its post as a grid card, not a lonely hero.
+ *   • ANY items (≥ 1): the newest becomes `primaryPost` and the grid gets the REST (no duplicate
+ *     card). A single-post site shows its post as the hero over an empty grid — owner directive
+ *     2026-08-22: "as long as there is at least one blog post, it should always have the latest
+ *     blog post here" (landinglab.ai/blog). Zero items clears the slot.
  */
 export const BLOG_PRIMARY_POST_BIND_TARGETS: Record<string, string> = {
   "blog-filtered-results": "primaryPost",
@@ -419,7 +420,7 @@ function inlineBlogItems(
   const primaryTarget = BLOG_PRIMARY_POST_BIND_TARGETS[type];
   if (primaryTarget) {
     const offset = typeof block.dataSource?.offset === "number" ? block.dataSource.offset : 0;
-    if (bindTarget === DEFAULT_BIND_TARGET && offset === 0 && finalItems.length >= 2) {
+    if (bindTarget === DEFAULT_BIND_TARGET && offset === 0 && finalItems.length >= 1) {
       props[primaryTarget] = finalItems[0];
       props[bindTarget] = finalItems.slice(1);
     } else {
