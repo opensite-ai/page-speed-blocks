@@ -1,8 +1,8 @@
 # AGENTS.md — @page-speed/blocks
 
 > AI Coding Agent reference for `@page-speed/blocks`. Read this file before making any changes to
-> the repository. It contains the canonical source of truth for architecture, conventions, danger
-> zones, and step-by-step task recipes.
+> the repository. It is the canonical source of truth for architecture, conventions, danger zones,
+> and step-by-step task recipes.
 
 ---
 
@@ -23,10 +23,10 @@
 13. [Testing](#13-testing)
 14. [Task Recipes](#14-task-recipes)
 15. [Critical Constraints & Danger Zones](#15-critical-constraints--danger-zones)
-16. [Dependency Graph](#16-dependency-graph)
+16. [Dependency Graph & Consumers](#16-dependency-graph--consumers)
 17. [TypeScript Rules](#17-typescript-rules)
 18. [Checklist Before Every Commit](#18-checklist-before-every-commit)
-19. [Dynamic Data Feed Layer](#19-dynamic-data-feed-layer-srcdata)
+19. [Dynamic Data Feed Layer (`src/data`)](#19-dynamic-data-feed-layer-srcdata)
 
 ---
 
@@ -35,18 +35,19 @@
 | Field | Value |
 |---|---|
 | NPM name | `@page-speed/blocks` |
-| Version | `0.3.0` |
+| Version | `0.6.13` |
 | License | BSD-3-Clause |
-| Package manager | **pnpm** (v10.24.0 required) |
+| Package manager | **pnpm** (`packageManager: "pnpm@11.20.0"`; `engines.pnpm: ">=9.0.0"`) |
 | Node requirement | `>=18.0.0` |
-| Module format | Dual: ESM (`.js`) + CJS (`.cjs`) |
+| Module format | Dual: ESM (`.js`) + CJS (`.cjs`); `.d.ts` / `.d.cts` declarations |
 | Build tool | `tsup` |
-| Test framework | `vitest` + `@testing-library/react` |
-| JSX transform | `react-jsx` (no need for `import React` in TSX) |
-| "use client" banner | Injected automatically by `tsup` on every output file |
+| Test framework | `vitest` (jsdom) + `@testing-library/react` + `@testing-library/jest-dom` |
+| JSX transform | `react-jsx` (no `import React` needed in TSX) |
+| `"use client"` banner | Injected on every output file via `esbuildOptions.banner` in `tsup.config.ts` |
 
-The package is `"sideEffects": false` — **do not introduce actual side effects at module scope**
-(the auto-init in `src/index.ts` is guarded by `typeof window !== "undefined"` for this reason).
+The package is `"sideEffects": false` — **do not introduce actual side effects at module scope**.
+The auto-init in `src/index.ts` is guarded by `typeof window !== "undefined"` **and**
+`typeof document !== "undefined"` for this reason.
 
 ---
 
@@ -59,7 +60,7 @@ page-speed-blocks/
 │   ├── types/
 │   │   └── index.ts                    ← ALL TypeScript interfaces/types (single source of truth)
 │   ├── registry/
-│   │   └── index.ts                    ← Singleton Map<string, BlockRenderer>
+│   │   └── index.ts                    ← Singleton Map<string, BlockRenderer> + reserved keys
 │   ├── core/
 │   │   ├── index.ts                    ← Core barrel
 │   │   ├── renderer.tsx                ← BlocksRenderer + genericBlockRenderer + renderBlock
@@ -70,15 +71,30 @@ page-speed-blocks/
 │   │   ├── button-renderer.tsx         ← Pressable-based button renderer
 │   │   ├── link-renderer.tsx           ← Pressable-based link renderer
 │   │   └── pressable-renderer.tsx      ← Generic Pressable renderer
+│   ├── data/
+│   │   ├── index.ts                    ← Data-layer barrel (re-exports + data types)
+│   │   ├── feed-client.ts              ← createFeedClient (single place that builds feed URLs)
+│   │   ├── resolve-blocks.ts           ← resolveBlocks + bind-target maps + block-shape helpers
+│   │   ├── mappers.ts                  ← wire → prop mappers + formatFeedDate + truncateAtWordBoundary
+│   │   └── article-props.ts            ← blog-detail → article-layout props (mirror of BlogDetailEntry)
 │   ├── utils/
 │   │   └── index.ts                    ← Pure helper functions (no React)
 │   └── __tests__/
 │       ├── setup.ts                    ← jest-dom import
 │       ├── registry.test.ts            ← Registry unit tests
 │       ├── renderer.test.tsx           ← BlocksRenderer component tests
-│       └── utils.test.ts              ← Utils unit tests
+│       ├── data-renderer.test.tsx      ← context.data threading, blockProps shim, __feed_error__
+│       ├── utils.test.ts               ← Util unit tests
+│       ├── feed-client.test.ts         ← URL building / filters / clamp / errors
+│       ├── mappers.test.ts             ← every wire→prop mapper (blog/ig/reviews/events)
+│       ├── resolve-blocks.test.ts      ← resolvers, bind targets, empty-vs-error, expansion
+│       ├── resolve-blog-post.test.ts   ← SPA article-layout parity + per-post layout override
+│       ├── article-props.test.ts       ← article-props cross-impl parity (Ruby/JS)
+│       ├── blog-category-chips.test.ts ← blogCategoryChips + Ruby/JS trim parity
+│       └── fixtures/
+│           └── blog-detail-parity.json ← shared lockstep fixture (see §19)
 ├── examples/
-│   └── basic-usage.tsx                 ← Reference usage (not shipped in dist)
+│   └── basic-usage.tsx                 ← Reference usage (not shipped; partially stale)
 ├── dist/                               ← Generated — never edit manually
 ├── tsup.config.ts                      ← Build entry points + dual-format config
 ├── tsconfig.json                       ← NodeNext module resolution, strict mode
@@ -98,7 +114,14 @@ page-speed-blocks/
 ```
 Consumer passes Block[] array
          │
-         ▼
+         ▼  (optional, BEFORE rendering)
+┌─────────────────────────────┐
+│        resolveBlocks        │  ← pre-render ASYNC pass (§19). Resolves dataSource → props.
+│  (only when blocks carry    │     Pure; never touches the registry or the sync renderer.
+│   a `dataSource`)           │
+└──────────┬──────────────────┘
+           │
+           ▼
 ┌─────────────────────────────┐
 │    EnhancedBlocksRenderer   │  ← Use this in most real apps
 │  (= BlocksProvider wrapping │
@@ -117,8 +140,10 @@ Consumer passes Block[] array
 │  2. For each root block:    │
 │     renderTree(block)       │
 │       └─ renderBlock()      │
+│           ├─ __feed_error__  (if _feedMeta.status === "error" and registered)
 │           ├─ getBlockRenderer(block._type)   ← custom from registry
-│           │   OR genericBlockRenderer        ← built-in fallback
+│           │   OR getBlockRenderer("__fallback__")
+│           │   OR genericBlockRenderer         ← built-in fallback
 │           └─ context.renderChildren(id)      ← recursive
 └─────────────────────────────┘
            │
@@ -126,10 +151,19 @@ Consumer passes Block[] array
     React element tree
 ```
 
-The rendering is **synchronous and recursive**. There is no async rendering path currently.
+The **synchronous** render engine is unchanged by the data layer. `resolveBlocks` is a separate
+pre-render async pass (§19). The render loop itself remains synchronous and recursive.
 
-`BlocksRenderer` uses `useMemo` for `getRootBlocks` to avoid recomputing on every render.
-`renderChildBlocks` is defined inside the component closure so it captures `blocks` from props.
+`BlocksRenderer` uses `useMemo` for `getRootBlocks`. `renderChildBlocks` is defined inside the
+component closure so it captures `blocks` (and the new `data` bag) from props.
+
+Two block shapes coexist and are **not** normalized before `resolveBlocks` runs (see §19):
+
+- **Chai runtime shape** — `{ _type, _id, blockProps }` (dt-cms / already-normalized pages).
+- **AI wire shape** — `{ block_ref | block_name, data }` (octane-generated, persisted verbatim).
+
+The host app (`customer-sites/chai_pages.tsx`) normalizes wire → chai **after** `resolveBlocks`,
+so hydrated props on wire-shaped blocks must land in `data` (handled by `writeContainer`).
 
 ---
 
@@ -142,7 +176,14 @@ All types live exclusively in `src/types/index.ts`. Do not duplicate them anywhe
 ```typescript
 interface Block {
   _id: string;           // REQUIRED. Unique ID. Used as React key and parent lookup.
-  _type: string;         // REQUIRED. Maps to a registered renderer name.
+  _type: string;         // Declared REQUIRED for the post-normalization render engine.
+                         // ⚠ At the DATA layer a wire-shaped block (block_ref/block_name) may
+                         // arrive WITHOUT it; resolvers derive the component id via blockType().
+  block_ref?: string;    // AI wire block reference, e.g. "gallery/instagram-post-grid".
+  block_name?: string;   // AI wire block name (fallback for block_ref). Same split("/").pop() rule.
+  data?: Record<string, unknown>; // AI wire props container (hydrated into for wire-shaped blocks).
+  dataSource?: DataSource; // Symbolic dynamic data source (§19). Retained after resolution.
+  _feedMeta?: FeedMeta;  // Machine-readable feed resolution status (ok | empty | error).
   _name?: string;        // Optional human label — not used at runtime.
   _parent?: string | null; // null / undefined = root block. String = child of that _id.
   tag?: string;          // HTML tag override for genericBlockRenderer.
@@ -156,28 +197,34 @@ interface Block {
   width?: number | string;
   height?: number | string;
   mediaReference?: { mediaRecordId?; mediaToken?; fallbackUrl? }; // CDN integration.
-  blockProps?: Record<string, unknown>; // Spread into element props by genericBlockRenderer.
+  blockProps?: Record<string, unknown>; // CANONICAL component props container.
   [key: string]: unknown; // Index signature — blocks are intentionally open.
 }
 ```
 
+> `props` (the legacy key) is **not** declared on `Block`. It works only because of the index
+> signature. The three built-in renderers read `block.blockProps ?? block.props` as a legacy shim;
+> `genericBlockRenderer` / `buildElementProps` use **only** `blockProps`.
+
 ### `BlockRenderContext`
 
-Passed into every renderer. Contains two things:
+Passed into every renderer:
 
 ```typescript
 interface BlockRenderContext {
-  blocks: Block[];                                          // Full flat array
-  renderChildren: (parentId: string) => ReactNode | null;  // Recursive renderer
+  blocks: Block[];                                              // Full flat array
+  renderChildren: (parentId: string) => ReactNode | ReactNode[] | null; // Recursive renderer
+  data?: Record<string, unknown>;                               // Arbitrary data bag from BlocksRenderer `data`
 }
 ```
 
 Always call `context.renderChildren(block._id)` inside custom renderers to render nested blocks.
 
-### `BlockRenderer`
+### `BlockRenderer` / `BlockRendererProps`
 
 ```typescript
-type BlockRenderer = (props: { block: Block; context: BlockRenderContext }) => ReactNode;
+interface BlockRendererProps { block: Block; context: BlockRenderContext; }
+type BlockRenderer = (props: BlockRendererProps) => ReactNode;
 ```
 
 Every renderer — built-in or custom — must match this signature exactly.
@@ -186,31 +233,50 @@ Every renderer — built-in or custom — must match this signature exactly.
 
 ## 5. Module Exports & Import Paths
 
-The `exports` map in `package.json` defines eight sub-paths. Use the most specific one to maximize
-tree-shaking.
+The `exports` map in `package.json` defines **ten** sub-paths. Use the most specific one to
+maximize tree-shaking.
 
 | Import path | What it gives you |
 |---|---|
 | `@page-speed/blocks` | Everything (barrel) — use sparingly |
 | `@page-speed/blocks/core` | `BlocksRenderer`, `BlocksProvider`, `EnhancedBlocksRenderer`, `renderBlock`, `genericBlockRenderer` |
-| `@page-speed/blocks/core/renderer` | Only `BlocksRenderer`, `renderBlock`, `genericBlockRenderer` |
-| `@page-speed/blocks/core/provider` | Only `BlocksProvider` |
-| `@page-speed/blocks/core/enhanced` | Only `EnhancedBlocksRenderer` |
-| `@page-speed/blocks/registry` | Registry CRUD functions only |
+| `@page-speed/blocks/core/renderer` | Only `BlocksRenderer`, `renderBlock`, `genericBlockRenderer` (+ `BlocksRendererProps`) |
+| `@page-speed/blocks/core/provider` | Only `BlocksProvider` (+ `BlocksProviderProps`) |
+| `@page-speed/blocks/core/enhanced` | Only `EnhancedBlocksRenderer` (+ `EnhancedBlocksRendererProps`) |
+| `@page-speed/blocks/registry` | Registry CRUD functions + `FALLBACK_RENDERER_KEY` / `FEED_ERROR_RENDERER_KEY` |
 | `@page-speed/blocks/types` | TypeScript types only (no runtime code) |
-| `@page-speed/blocks/data` | Dynamic data feed layer — `resolveBlocks`, `createFeedClient`, mappers, bind-target maps, renderer-key constants (see §19) |
-| `@page-speed/blocks/renderers` | Built-in renderer functions + type arrays |
+| `@page-speed/blocks/utils` | Pure utility functions |
+| `@page-speed/blocks/data` | Dynamic data feed layer — full public API (§19) |
+| `@page-speed/blocks/renderers` | Built-in renderer functions + block-type arrays |
 
-**Prefer granular imports.** The barrel (`@page-speed/blocks`) still tree-shakes, but granular
-imports give bundlers a clearer signal.
+**Prefer granular imports.** The barrel still tree-shakes, but granular imports give bundlers a
+clearer signal.
+
+Important barrel nuance: `@page-speed/blocks` re-exports only a **curated subset** of the data
+layer — `createFeedClient`, `MAX_PER_PAGE`, `resolveBlocks`, `resolveBindTarget`,
+`DEFAULT_BIND_TARGETS`, `DEFAULT_BIND_TARGET`, `mapBlogFeedItem`, `mapBlogFeedDetail`,
+`formatFeedDate`. The rest of the data API (`mapInstagramFeedItem`, `mapTestimonialItem`,
+`mapReviewItem`, `mapSocialTestimonialItem`, `mapEventFeedItem`, `platformLabel`,
+`truncateAtWordBoundary`, `SINGLE_BIND_TARGETS`, `BLOG_CATEGORY_BIND_TARGETS`,
+`BLOG_PRIMARY_POST_BIND_TARGETS`, `ALL_CATEGORY_CHIP`, `blogCategoryChips`, `blockType`, all the
+`article-props` helpers, etc.) is available only from `@page-speed/blocks/data`.
+
+The barrel also re-exports `Pressable` from `@page-speed/pressable` and default-exports
+`EnhancedBlocksRenderer`.
+
+`./renderers` maps to the barrel `dist/renderers/index.js`. Although `tsup.config.ts` builds
+`dist/renderers/{pressable,button,link}-renderer.*`, those individual entry points are **not**
+listed in `package.json` `exports` — import them through `@page-speed/blocks/renderers` (or the
+barrel), never as `@page-speed/blocks/renderers/button-renderer` (Node's exports enforcement
+blocks it).
 
 ---
 
 ## 6. Auto-Initialization Behavior
 
 `src/index.ts` runs `initializeDefaultRenderers()` automatically **only in browser environments**
-(`typeof window !== "undefined"`). This registers `buttonRenderer`, `linkRenderer`, and
-`pressableRenderer` for their associated block type arrays.
+(`typeof window !== "undefined" && typeof document !== "undefined"`). This registers
+`pressableRenderer`, `buttonRenderer`, and `linkRenderer` for their associated block type arrays.
 
 Consumers can opt out by setting:
 
@@ -220,7 +286,8 @@ window.__PAGE_SPEED_BLOCKS_NO_AUTO_INIT__ = true;
 ```
 
 **SSR / Node.js:** Auto-init never runs. You must call `initializeDefaultRenderers()` manually if
-you need the default renderers on the server.
+you need the default renderers on the server (and register any custom / `__feed_error__`
+renderers).
 
 **Tests:** Always call `clearRegistry()` in `beforeEach` to prevent renderer state leaking between
 test cases. The singleton registry persists across tests within the same Vitest worker.
@@ -244,22 +311,19 @@ getRegisteredTypes(): string[]
 registerRenderers(map: Record<string, BlockRenderer>): void  // batch register
 ```
 
-### Special type: `__fallback__`
+### Reserved keys
 
-`renderBlock()` checks for `__fallback__` before falling back to `genericBlockRenderer`:
-
-```typescript
-const customRenderer = getBlockRenderer(block._type) ?? getBlockRenderer("__fallback__");
-const renderer = customRenderer ?? genericBlockRenderer;
-```
-
-Register a `__fallback__` renderer to catch all unregistered block types:
+Both constants are exported from `src/registry/index.ts`, the barrel, and `./data`:
 
 ```typescript
-registerBlockRenderer("__fallback__", ({ block, context }) => {
-  // handle unknown block types
-});
+FALLBACK_RENDERER_KEY   // "__fallback__"
+FEED_ERROR_RENDERER_KEY // "__feed_error__"
 ```
+
+- `__fallback__` — `renderBlock()` consults it before falling back to `genericBlockRenderer`.
+- `__feed_error__` — `renderBlock()` routes blocks whose `_feedMeta.status === "error"` here when
+  it is registered, so error states stay visually distinct from empty states (§19). When absent,
+  the block renders normally (its empty state).
 
 ### Registration order
 
@@ -275,7 +339,7 @@ warning. When integrating multiple libraries that register renderers, be deliber
 Used when no custom renderer is registered for a `_type`. Behavior:
 
 1. Determines HTML tag: `block.tag` → `DEFAULT_TAG_BY_TYPE[block._type]` → `"div"`
-2. Calls `buildElementProps(block)` → `{ className, ...attrs, style? }`
+2. Calls `buildElementProps(block)` → `{ className, ...attrs, style?, ...blockProps }`
 3. Renders `block.content` as first child (text node)
 4. Calls `context.renderChildren(block._id)` for tree children
 5. Calls `createElement(tag, props, children)`
@@ -291,16 +355,23 @@ Video → div
 
 ### `renderBlock`
 
-Wraps a single block render in a try/catch. On error: logs to `console.error` and renders a red
-error box (`border-red-300 bg-red-50`) using `genericBlockRenderer` — children are still attempted.
+Wraps a single block render. Resolution order:
+
+1. If `block._feedMeta?.status === "error"` **and** `__feed_error__` is registered → use it.
+2. Else `getBlockRenderer(block._type)` → `getBlockRenderer("__fallback__")` → `genericBlockRenderer`.
+
+On error: logs to `console.error` and renders a red error box
+(`border-red-300 bg-red-50`) using `genericBlockRenderer` — children are still attempted.
 
 ### `BlocksRenderer`
 
 - Returns `null` for empty `blocks` array.
 - Root blocks render in array order.
 - Each block is wrapped in `<Fragment key={block._id}>`.
+- Threads the `data` prop into every renderer's `context.data`.
 - Without a `wrapper` prop, the outer element is `<div style={{ display: "contents" }}>`. This
   means the wrapper div has **zero layout impact** — it does not create a flex/grid container.
+- A `className` prop is applied only to that default wrapper div (not when `wrapper` is supplied).
 
 ---
 
@@ -326,8 +397,14 @@ This merges with any existing `style` from `styles_attrs`. The Tailwind `bg-*` c
 
 ### `styles_attrs`
 
-A flat object of HTML attributes (`data-*`, `aria-*`, `id`, etc.). Null/undefined values are
-filtered out by `normalizeAttributes`. The result is spread directly onto the React element.
+A flat object of HTML attributes (`data-*`, `aria-*`, `id`, `style`, etc.). Null/undefined values
+are filtered out by `normalizeAttributes`. The result is spread directly onto the React element.
+
+### `blockProps`
+
+`buildElementProps` spreads `block.blockProps` last, so it wins over derived `className`/attrs.
+This is the generic renderer's prop path. The three built-in renderers instead destructure their
+declared props from `block.blockProps ?? block.props` and forward them to `Pressable`.
 
 ### Pre-compiled Tailwind (recommended approach)
 
@@ -344,15 +421,15 @@ All three live in `src/renderers/` and use `@page-speed/pressable`'s `Pressable`
 
 Registered for: `Button`, `SubmitButton`, `ActionButton`, `FormButton`
 
-- Reads props from `block.props` (cast to `ButtonBlockProps`)
+- Reads props from `block.blockProps ?? block.props` (cast to `ButtonBlockProps`)
 - Sets `asButton={true}` on `Pressable`
-- Combines `block.content` + `block.props.children` + `context.renderChildren(block._id)`
+- Combines `block.content` + `blockProps.children` + `context.renderChildren(block._id)`
 
 ### `linkRenderer`
 
 Registered for: `Link`, `NavLink`, `CTALink`, `ExternalLink`
 
-- Reads `href`, `target`, `rel` from `block.props`
+- Reads `href`, `target`, `rel`, `variant`, `size`, `className` from props
 - Default `variant="link"` on `Pressable`
 - Does **not** set `asButton`
 
@@ -361,14 +438,23 @@ Registered for: `Link`, `NavLink`, `CTALink`, `ExternalLink`
 Registered for: `Pressable`, `PressableButton`, `PressableLink`, `CTAButton`, `ActionButton`
 
 - Most generic of the three
-- Reads `href`, `onClick`, `asButton` from `block.props`
-- `ActionButton` is registered for **both** `buttonRenderer` and `pressableRenderer` — the last
-  `registerBlockRenderer` call wins (pressableRenderer, from the auto-init loop order)
+- Reads `href`, `onClick`, `variant`, `size`, `asButton`, `className` from props
+- Defaults `variant="default"`, `size="default"`, `asButton={false}`
 
-> **Note:** `ActionButton` appears in both `BUTTON_BLOCK_TYPES` and `PRESSABLE_BLOCK_TYPES`.
-> During `initializeDefaultRenderers()`, buttons are registered first, then pressable types —
-> so `ActionButton` ends up mapped to `pressableRenderer`. Keep this in mind if you need
-> `ActionButton` to behave as a button.
+### `ActionButton` collision — read carefully
+
+`ActionButton` appears in **both** `PRESSABLE_BLOCK_TYPES` and `BUTTON_BLOCK_TYPES`.
+`initializeDefaultRenderers()` registers **pressable first, then button, then link**:
+
+```typescript
+PRESSABLE_BLOCK_TYPES.forEach(type => registerBlockRenderer(type, pressableRenderer));
+BUTTON_BLOCK_TYPES.forEach(type => registerBlockRenderer(type, buttonRenderer));
+LINK_BLOCK_TYPES.forEach(type => registerBlockRenderer(type, linkRenderer));
+```
+
+Therefore the **button** registration wins for `ActionButton` (registered last among the two
+colliding loops). This is the OPPOSITE of older documentation that claimed pressable wins. If you
+change the loop order in `initializeDefaultRenderers()`, you change observable behavior.
 
 ---
 
@@ -380,14 +466,19 @@ All in `src/utils/index.ts`. Pure functions — no React, no side effects.
 |---|---|---|
 | `extractClassName` | `(styles?: string) => string` | Strip `#styles:,` prefix; trim |
 | `normalizeAttributes` | `(attrs?) => Record<string, unknown>` | Filter null/undefined |
-| `extractBackgroundStyle` | `(backgroundImage?) => Record<string,string> \| null` | Build inline style object |
-| `getRootBlocks` | `(blocks: Block[]) => Block[]` | Filter where `!_parent` |
+| `extractBackgroundStyle` | `(backgroundImage?) => Record<string,string> \| null` | Build inline `backgroundImage` style object |
+| `getRootBlocks` | `(blocks: Block[]) => Block[]` | Filter where `!_parent \|\| _parent === null` |
 | `getChildBlocks` | `(blocks: Block[], parentId: string) => Block[]` | Filter where `_parent === parentId` |
-| `buildElementProps` | `(block: Block) => Record<string, unknown>` | Compose className + attrs + style + blockProps |
+| `buildElementProps` | `(block: Block) => Record<string, unknown>` | Compose className + attrs + style + `blockProps` |
 | `parseDesignPayload` | `(payload: string \| object) => { blocks: Block[] }` | JSON.parse with fallback |
 
 `buildElementProps` is the most important: it is the single place where `styles`, `styles_attrs`,
-`backgroundImage`, and `blockProps` are merged into React-ready props.
+`backgroundImage`, and `blockProps` are merged into React-ready props. It spreads `blockProps`
+last (winning over derived values), and does **not** read the legacy `props` key.
+
+`parseDesignPayload` returns `{ blocks: Block[] }` — note it does **not** return the full
+`DesignPayload` (`version` is not in the runtime shape even though `DesignPayload` declares it).
+Consumers that need `DesignPayload` cast the result (see `customer-sites/chai_pages.tsx`).
 
 ---
 
@@ -396,13 +487,15 @@ All in `src/utils/index.ts`. Pure functions — no React, no side effects.
 ### `tsup.config.ts`
 
 - Outputs **both** ESM (`.js`) and CJS (`.cjs`) for every entry.
-- Generates `.d.ts` and `.d.cts` declaration files.
-- Generates `.map` sourcemaps.
+- Generates `.d.ts` and `.d.cts` declaration files (`dts: true`).
+- Generates `.map` sourcemaps (`sourcemap: true`).
+- `clean: true` — `dist/` is wiped before each build.
 - `splitting: false` — no code-splitting chunks (important for predictable tree-shaking).
 - `treeshake: true` — rollup-level tree-shaking enabled.
 - `minify: false` — source is readable; consumers minify in their own build.
 - All `@opensite/ui`, `@page-speed/*`, and `react*` packages are **external** — never bundled in.
-- Injects `"use client";` banner on every output file (required for Next.js App Router).
+- Injects `"use client";` on every output file via `esbuildOptions.banner` (required for Next.js
+  App Router).
 
 ### Entry points (one dist file per entry)
 
@@ -415,23 +508,28 @@ src/core/EnhancedBlocksRenderer.tsx → dist/core/EnhancedBlocksRenderer.{js,cjs
 src/registry/index.ts               → dist/registry/index.{js,cjs}
 src/types/index.ts                  → dist/types/index.{js,cjs}
 src/utils/index.ts                  → dist/utils/index.{js,cjs}
+src/data/index.ts                   → dist/data/index.{js,cjs}
 src/renderers/index.ts              → dist/renderers/index.{js,cjs}
 src/renderers/pressable-renderer.tsx → dist/renderers/pressable-renderer.{js,cjs}
 src/renderers/button-renderer.tsx   → dist/renderers/button-renderer.{js,cjs}
 src/renderers/link-renderer.tsx     → dist/renderers/link-renderer.{js,cjs}
 ```
 
+> The individual `renderers/*-renderer` entries are built but not exposed via `package.json`
+> `exports` (only `./renderers` is). Keep them in the tsup entry map for completeness/analysis,
+> but import them through the barrel.
+
 ### Build commands
 
 ```bash
-pnpm run build          # One-shot build
-pnpm run build:watch    # Watch mode for development
-pnpm run clean          # Remove dist/
+pnpm run build          # One-shot build (tsup)
+pnpm run build:watch    # Watch mode
+pnpm run clean          # Remove dist/ (rimraf dist)
 pnpm run typecheck      # tsc --noEmit (no output, type errors only)
 ```
 
 `pnpm run prepack` runs `build` automatically before `pnpm pack` or `pnpm publish`.
-`pnpm run prepublishOnly` runs tests then build.
+`pnpm run prepublishOnly` runs tests then build (`pnpm run test && pnpm run build`).
 
 ---
 
@@ -444,13 +542,15 @@ pnpm run typecheck      # tsc --noEmit (no output, type errors only)
 - `@testing-library/jest-dom` imported globally via `src/__tests__/setup.ts`
 - `vitest.config.ts` sets `globals: true` — `describe`, `it`, `expect` etc. are available without
   importing them explicitly
+- Coverage: `v8` provider, reporters `text`/`json`/`html`, excludes `node_modules/`, `dist/`,
+  `**/*.test.ts(x)`, and `**/*.config.ts`
 
 ### Commands
 
 ```bash
-pnpm run test           # Run all tests once
+pnpm run test           # Run all tests once (vitest run)
 pnpm run test:watch     # Watch mode
-pnpm run test:coverage  # Run with v8 coverage (HTML + JSON + text reporters)
+pnpm run test:coverage  # Run with v8 coverage
 ```
 
 ### Critical test rule: always clear the registry
@@ -466,13 +566,13 @@ beforeEach(() => {
 });
 ```
 
-This pattern is already in `registry.test.ts`. Apply it to any new test file that touches the
-registry.
+`registry.test.ts` and `data-renderer.test.tsx` already do this. Apply it to any new test file that
+touches the registry.
 
 ### Test file locations
 
-All tests live in `src/__tests__/`. Use the `.test.ts` extension for pure logic, `.test.tsx` for
-anything that renders JSX.
+All tests live in `src/__tests__/`. Use `.test.ts` for pure logic, `.test.tsx` for anything that
+renders JSX. Shared fixtures live in `src/__tests__/fixtures/`.
 
 ### What is tested
 
@@ -480,7 +580,14 @@ anything that renders JSX.
 |---|---|
 | `registry.test.ts` | All registry CRUD functions, batch registration |
 | `renderer.test.tsx` | `BlocksRenderer` rendering, custom renderers, CSS classes, `#styles:` prefix, empty array |
+| `data-renderer.test.tsx` | `context.data` threading, `blockProps`/`props` shim, `__feed_error__` routing |
 | `utils.test.ts` | `extractClassName`, `normalizeAttributes`, `getRootBlocks`, `getChildBlocks`, `parseDesignPayload` |
+| `feed-client.test.ts` | URL building, filter persistence, `per_page` clamp, error envelopes, all five list endpoints |
+| `mappers.test.ts` | blog / Instagram / testimonials / events wire→prop mappers, `formatFeedDate`, `truncateAtWordBoundary`, `platformLabel` |
+| `resolve-blocks.test.ts` | bind-target resolution, blog/ig/reviews/events resolvers, empty-vs-error, gallery coercion, featuredPost / primaryPost / categories binds, unknown source, per-block error isolation, one-to-many expansion, wire-shape hydration |
+| `resolve-blog-post.test.ts` | SPA article-layout parity with first load, per-post layout override precedence |
+| `article-props.test.ts` | `mapBlogDetailToArticleProps` cross-impl parity, `slugify`, sections/chapters, read time, breadcrumbs, `cgiEscape`, `normalizedText`, Ruby/JS whitespace parity, `allowListedArticleLayout`, byline/omission rules |
+| `blog-category-chips.test.ts` | `blogCategoryChips`, Ruby/JS trim parity, `blog_feed` categories bind |
 
 ---
 
@@ -496,22 +603,17 @@ anything that renders JSX.
    ```typescript
    "renderers/my-renderer": "src/renderers/my-renderer.tsx",
    ```
-6. Add a corresponding export in `package.json` `exports`:
-   ```json
-   "./renderers/my-renderer": {
-     "types": "./dist/renderers/my-renderer.d.ts",
-     "import": "./dist/renderers/my-renderer.js",
-     "require": "./dist/renderers/my-renderer.cjs"
-   }
-   ```
-7. Register it inside `initializeDefaultRenderers()` in `src/index.ts`
-8. Add tests in `src/__tests__/`
+6. **Do not** add a new `package.json` `exports` sub-path for it (the project exposes only the
+   `./renderers` barrel); import it via `@page-speed/blocks/renderers`
+7. Register it inside `initializeDefaultRenderers()` in `src/index.ts` (mind the loop order —
+   see §10)
+8. Add tests in `src/__tests__/` (and `clearRegistry()` in `beforeEach`)
 9. Run `pnpm run build && pnpm run test`
 
 ### Add a new utility function
 
 1. Add the function to `src/utils/index.ts` (pure function, no React)
-2. Export it from there (it's already exported via barrel)
+2. It is exported automatically via the `./utils` sub-path and barrel
 3. Add unit tests in `src/__tests__/utils.test.ts`
 4. No build config changes needed — `utils/index` entry already exists
 
@@ -523,11 +625,25 @@ anything that renders JSX.
 4. If it needs special handling in `buildElementProps`, update `src/utils/index.ts`
 5. Run `pnpm run typecheck` to catch any downstream breakage
 
+### Add a new data source type (Dynamic Data Feeds)
+
+1. Add the source type to the `DataSource["type"]` union in `src/types/index.ts`
+2. Add any wire/prop shapes as local, string-typed interfaces in `src/types/index.ts`
+   (assignable to the block's `React.ReactNode` props — do **not** add `@opensite/ui` APIs)
+3. Add the `FeedClient` list method + its `build*Query` serializer in `src/data/feed-client.ts`
+   (`per_page` clamp ≤ `MAX_PER_PAGE`, resend every filter, return errors, never throw/log)
+4. Add the wire→prop mapper in `src/data/mappers.ts`
+5. Add the resolver + bind-target map(s) in `src/data/resolve-blocks.ts`, register it in
+   `BUILT_IN_SOURCES`
+6. Export the public API from `src/data/index.ts` and (only if it belongs in the curated barrel
+   set) `src/index.ts`
+7. Keep lockstep with the dashtrack-ai `Feeds::Hydrator` reference (§19)
+8. Add tests; run `pnpm run build && pnpm run test && pnpm run typecheck`
+
 ### Register a custom renderer from a consuming app
 
 ```typescript
 import { registerBlockRenderer } from "@page-speed/blocks/registry";
-// or: import { registerRenderers } from "@page-speed/blocks/registry";
 
 registerBlockRenderer("MyHeroComponent", ({ block, context }) => {
   return (
@@ -577,7 +693,7 @@ import { BlocksRenderer } from "@page-speed/blocks/core/renderer";
 ### Parse a Chai design payload
 
 ```typescript
-import { parseDesignPayload } from "@page-speed/blocks/utils"; // (when utils sub-path is added)
+import { parseDesignPayload } from "@page-speed/blocks/utils";
 // or from the barrel:
 import { parseDesignPayload } from "@page-speed/blocks";
 
@@ -605,8 +721,8 @@ and publish order to Jordan.
 
 ### NEVER edit files in `dist/`
 
-`dist/` is fully regenerated on every `pnpm run build`. Any manual edits will be silently
-overwritten.
+`dist/` is fully regenerated on every `pnpm run build` (`clean: true`). Any manual edits will be
+silently overwritten.
 
 ### NEVER import from relative paths that skip `.js` extensions
 
@@ -636,63 +752,151 @@ render tree for sibling/parent renderers. Always treat it as read-only.
 ### NEVER use `console.log` in production code
 
 Use `console.error` only in the error-handling paths that already use it (`renderBlock`,
-`renderTree`). No debug logging in renderer or utility code.
+`renderTree`, `parseDesignPayload`). No debug logging in renderer, utility, or data-layer code
+(`FeedClient` returns errors — it must never log).
 
 ### Be careful with `ActionButton` type collision
 
-`ActionButton` is in both `BUTTON_BLOCK_TYPES` and `PRESSABLE_BLOCK_TYPES`. The auto-init loop
-registers buttons first, then pressable — so `pressableRenderer` wins for `ActionButton`.
-If you change the loop order in `initializeDefaultRenderers()`, you change observable behavior.
+`ActionButton` is in both `BUTTON_BLOCK_TYPES` and `PRESSABLE_BLOCK_TYPES`. The current
+`initializeDefaultRenderers()` registers pressable **first**, button **second**, so
+`buttonRenderer` wins for `ActionButton` (§10). If you change the loop order, you change
+observable behavior.
 
-### The `__fallback__` renderer key is reserved
+### `blockProps` is canonical; `props` is a legacy shim only
 
-Do not use `"__fallback__"` as a real block `_type`. It is used internally by `renderBlock` as a
-catch-all sentinel.
+The declared field is `blockProps`. The three built-in renderers fall back to `props` for old
+payloads, but `buildElementProps` / `genericBlockRenderer` do not. New code must read `blockProps`.
+
+### Wire-shaped blocks may lack `_type` at the data layer
+
+`Block._type` is declared required (correct for the post-normalization render engine), but AI wire
+blocks (`block_ref`/`block_name`) reach `resolveBlocks` without it. Data-layer code must derive the
+component id via `blockType()` and write hydrated props via `writeContainer`/`withContainer` (§19).
+Do not assume `_type` is present in `src/data/`.
+
+### `__fallback__` and `__feed_error__` keys are reserved
+
+Do not use `"__fallback__"` or `"__feed_error__"` as real block `_type`s. They are internal
+sentinels consulted by `renderBlock`.
+
+### Empty ≠ error (feed semantics)
+
+`_feedMeta.status` is `ok | empty | error`. An `empty` outcome must never fabricate items or
+placeholder content; an `error` outcome routes to `__feed_error__` only when registered. Do not
+collapse a 404 `blog_post` into `upstream_error` (it must be `post_not_found` empty) — customer-sites
+keys its not-found detection on that exact reason.
+
+### Lockstep contracts (do not diverge unilaterally)
+
+The data layer is a **byte-for-byte client-side mirror** of two Ruby references:
+
+- `dashtrack-ai` `app/services/feeds/hydrator.rb` (feed hydration / block-shape handling)
+- `customer-sites` `app/services/blog_detail_entry.rb` (article-layout props)
+
+`src/__tests__/fixtures/blog-detail-parity.json` is shared with
+`utility-modules/customer-sites/spec/fixtures/blog_detail_parity.json`. Changing a mapper/resolver
+on one side turns the other repo's suite red. Before changing `mappers.ts`, `resolve-blocks.ts`, or
+`article-props.ts`, grep the dashtrack-ai / customer-sites repos for the matching Ruby method.
 
 ### `sideEffects: false` contract
 
 Because the package declares `"sideEffects": false`, bundlers may eliminate any module that is
-imported but whose exports are unused. The auto-init code at the bottom of `src/index.ts`
-**only runs if the barrel is actually imported and its exports are used**. If a consumer imports
-only from sub-paths (e.g., `@page-speed/blocks/registry`), the auto-init never runs.
+imported but whose exports are unused. The auto-init code at the bottom of `src/index.ts` **only
+runs if the barrel is actually imported and its exports are used**. If a consumer imports only
+from sub-paths (e.g., `@page-speed/blocks/registry`), the auto-init never runs.
 
 ---
 
-## 16. Dependency Graph
+## 16. Dependency Graph & Consumers
+
+### Direct dependencies
+
+| Package | Range (package.json) | Actually imported by `src/`? |
+|---|---|---|
+| `@opensite/ui` | `3.17.3` (exact) | ❌ externalized, not imported at runtime |
+| `@page-speed/img` | `0.4.10` (exact) | ❌ externalized, not imported at runtime |
+| `@page-speed/pressable` | `^0.1.1` | ✅ `Pressable` (all three built-in renderers) |
+| `@page-speed/router` | `^1.2.1` | ✅ `RouterProvider` (`BlocksProvider`) |
+| `@page-speed/video` | `0.0.9` (exact) | ❌ externalized, not imported at runtime |
+
+`@opensite/ui`, `@page-speed/img`, and `@page-speed/video` are declared dependencies and listed in
+the tsup `external` array for ecosystem/hoisting consistency, but **this package's own runtime only
+imports `@page-speed/pressable` and `@page-speed/router`**. Before adding a new `@page-speed/*` or
+`@opensite/*` import, verify it is already in `dependencies` **and** the `external` array.
+
+### Peer dependencies
 
 ```
-@page-speed/blocks
-├── @opensite/ui@3.1.7          (peer-ish: external to bundle, listed in dependencies)
-├── @page-speed/img@0.4.9       (external to bundle)
-├── @page-speed/pressable@0.0.7 (external; Pressable component used by all built-in renderers)
-├── @page-speed/router@1.0.2    (external; RouterProvider used by BlocksProvider)
-└── @page-speed/video@0.0.7     (external to bundle)
-
-Peer dependencies (must be provided by consumer):
-├── react@>=17.0.0
-└── react-dom@>=17.0.0
+react >=17.0.0
+react-dom >=17.0.0
 ```
 
-All `@page-speed/*` packages are **external** in the tsup config — they are never bundled.
-The consumer is responsible for having them installed. When adding new code that uses a
-`@page-speed/*` package, verify it is already in the `dependencies` field of `package.json`
-**and** in the `external` array in `tsup.config.ts`.
+(These are the only two `peerDependencies` in `package.json` — the README's "Peer Dependencies"
+install command listing `@opensite/ui` / `@page-speed/img` / `@page-speed/video` /
+`@page-speed/pressable` / `@page-speed/router` is misleading; those are regular `dependencies`.)
+
+### Reverse dependencies (consumers of `@page-speed/blocks`)
+
+Per `/Users/jordanhudgens/code/dashtrack/docs/front-end-dependency-graph.md`, `@page-speed/blocks`
+is consumed by `app` (customer-sites), `dashtrack-cms`, and `opensite-ui-showcase`.
+
+#### `app` → `utility-modules/customer-sites` (`app/javascript/`)
+
+- `block-registry.ts` — `initOpenSiteRenderers()` registers **every** `@opensite/ui` block into
+  the blocks registry via `registerBlockRenderer`. It calls `getAllBlocks()` from
+  `@opensite/ui/registry`, then deserializes `blockProps` (`__jsx` values and markup-looking
+  strings) using `deserializeJsx` + `@page-speed/markdown-to-jsx`'s `compileMarkdown` (with
+  `script`/`style` overrides that render `null`).
+- `chai_pages.tsx` — the live-site entrypoint. Uses the **base** `BlocksRenderer` (not
+  `EnhancedBlocksRenderer`) because it already wraps the tree in `@page-speed/router`'s
+  `RouterProvider` directly. It also uses `parseDesignPayload` (barrel), `resolveBlocks`
+  (`/data`), and its own local `normalizeBlocks` (wire → chai, run **after** `resolveBlocks`).
+  `resolveBlocks` is invoked with `{ baseUrl, websiteToken, path }` from server-injected
+  `window._dashtrackFeeds` / `window._dashtrackWebsite`.
+
+#### `dashtrack-cms` → `dt-cms/Source/src/`
+
+- `chaibuilder/useBlocksRenderer.ts` — lazily `import("@page-speed/blocks")` on the client and
+  uses `EnhancedBlocksRenderer` (or `default`).
+- `features/semantic-builder/previewFeedHydration.ts` — the semantic-builder preview uses
+  `createFeedClient`, `resolveBindTarget`, `resolveBlocks`, and `SINGLE_BIND_TARGETS` from
+  `@page-speed/blocks/data`. It also contains **pin-lag lockstep copies** of `blogCategoryChips`,
+  `applyPrimaryPostBind`, and `clearEmptyFeedItems` that become idempotent no-ops once the preview
+  runs against a `@page-speed/blocks` release that natively writes those binds.
+
+#### `opensite-ui-showcase` → `tools/opensite-ui-showcase/src/`
+
+- `app/test-blocks/page.tsx` — a fixture page using `EnhancedBlocksRenderer` with a hand-written
+  `Block[]` array.
+- `components/block-preview.tsx` — registers a per-component `showcase:<id>` renderer with
+  `registerBlockRenderer` and renders it through `EnhancedBlocksRenderer` inside an iframe portal;
+  unregisters on cleanup with `unregisterBlockRenderer`.
+
+### Update order
+
+Dependency-first (`docs/front-end-dependency-graph.md`): update/publish `@page-speed/pressable`
+and `@page-speed/router` before `@page-speed/blocks`, and `@page-speed/blocks` before `app`,
+`dashtrack-cms`, and `opensite-ui-showcase`. Applications are consumers only and are not published.
 
 ---
 
 ## 17. TypeScript Rules
 
 - **Strict mode** is enabled (`"strict": true`). No implicit `any`.
-- `@typescript-eslint/no-explicit-any` is a **warning**, not an error. Prefer proper types but
-  explicit `any` is acceptable in renderer prop destructuring (the built-in renderers already
-  use it in interface definitions for `...restProps`).
-- `@typescript-eslint/no-unused-vars` is an error. Prefix unused variables with `_`.
-- `skipLibCheck: true` — declaration file errors from dependencies are ignored.
 - Target is `ES2022` — you can use optional chaining, nullish coalescing, `at()`, `Object.hasOwn`,
   etc. Do not use features newer than ES2022.
-- JSX transform is `react-jsx` (`"jsx": "react-jsx"`) — no need for `import React from "react"`
-  in `.tsx` files, but you still need explicit React imports for `createElement`, `useMemo`,
-  `Fragment`, etc.
+- `module` / `moduleResolution` are `NodeNext` — internal imports need `.js` extensions (§15).
+- JSX transform is `react-jsx` — no `import React from "react"` needed in `.tsx`, but explicit
+  imports are still required for `createElement`, `useMemo`, `Fragment`, `ReactNode`, etc.
+- `types: ["node"]` is set in `tsconfig.json`.
+- `@typescript-eslint/no-explicit-any` is a **warning**, not an error. Prefer proper types but
+  explicit `any` is acceptable in renderer prop destructuring (the built-in renderers use it in
+  their `[key: string]: any` interfaces and `...restProps`).
+- `@typescript-eslint/no-unused-vars` is an error, with `argsIgnorePattern: "^_"` (prefix unused
+  variables with `_`).
+- `skipLibCheck: true` — declaration file errors from dependencies are ignored.
+- `tsconfig.json` excludes `**/*.test.ts` / `**/*.test.tsx` from the build (`include` is
+  `src/**/*`); tests are type-checked by `vitest`/esbuild, not `tsc --noEmit`.
 
 ---
 
@@ -702,19 +906,21 @@ Run all of these. Do not commit if any fail.
 
 ```bash
 pnpm run typecheck    # Zero TypeScript errors
-pnpm run lint         # Zero ESLint errors
-pnpm run test         # All tests pass
+pnpm run lint         # Zero ESLint errors (eslint src --ext .ts,.tsx)
+pnpm run test         # All tests pass (vitest run)
 pnpm run build        # Build succeeds, dist/ is up to date
 ```
 
 Additional checks:
 
 - [ ] No new files added to `dist/` manually
-- [ ] All new `.ts`/`.tsx` imports use `.js` extension
+- [ ] All new `.ts`/`.tsx` imports use the `.js` extension
 - [ ] Any new `Block` fields are optional and documented with JSDoc
-- [ ] Any new renderer is exported from `src/renderers/index.ts`
-- [ ] Any new entry point is added to both `tsup.config.ts` and `package.json` exports
+- [ ] Any new renderer is exported from `src/renderers/index.ts` and registered in `initializeDefaultRenderers()`
+- [ ] Any new entry point is added to `tsup.config.ts` (and, if it must be publicly importable, `package.json` `exports`)
 - [ ] `clearRegistry()` is called in `beforeEach` for any test touching the registry
+- [ ] Any data-layer change is checked against the dashtrack-ai `Feeds::Hydrator` / customer-sites
+      `BlogDetailEntry` lockstep references (§15/§19)
 - [ ] `CHANGELOG.md` updated if behavior changes
 - [ ] `package.json` version bumped if publishing
 
@@ -722,69 +928,167 @@ Additional checks:
 
 ## 19. Dynamic Data Feed Layer (`src/data/`)
 
-Added in `0.2.0` (Dynamic Data Feeds, Phase 1); extended in `0.3.0` (Phase 3, Instagram).
 Implements the client-side rendering data layer of
-`../../docs/dynamic-feeds/FEED_CONTRACT.md` §7. **The synchronous
-render engine is untouched** — resolution is a separate pre-render async pass. Files:
+`../../docs/dynamic-feeds/FEED_CONTRACT.md` (v1, Phases 1–6). **The synchronous render engine is
+untouched** — resolution is a separate pre-render async pass. Files:
 
 ```
 src/data/
 ├── index.ts          ← Barrel: re-exports the public API + data types from src/types
-├── feed-client.ts    ← createFeedClient — the SINGLE place that builds feed URLs (listBlogs, listInstagram, …)
-├── resolve-blocks.ts ← resolveBlocks + DEFAULT_BIND_TARGETS + resolveBindTarget (blog_feed / blog_post / instagram_feed)
-└── mappers.ts        ← wire → prop mappers (mapBlogFeedItem, mapBlogFeedDetail, mapInstagramFeedItem, formatFeedDate)
+├── feed-client.ts    ← createFeedClient — the SINGLE place that builds feed URLs
+├── resolve-blocks.ts ← resolveBlocks + bind-target maps + block-shape helpers
+├── mappers.ts        ← wire → prop mappers + formatFeedDate + truncateAtWordBoundary
+└── article-props.ts  ← blog-detail → article-layout props (mirror of BlogDetailEntry)
 ```
 
-### Instagram feed (Phase 3, `0.3.0`)
+### Source types (all five implemented)
 
-- `FeedClient.listInstagram({ page?, perPage?, hashtag? })` hits `/feeds/instagram`; same
-  URL-building / `per_page` clamp / error-envelope conventions as `listBlogs`.
-- `mapInstagramFeedItem` (§4.1b) returns `InstagramPostItem | null` — it **returns `null` to skip
-  imageless posts** (`files[0].image_url` absent). The `instagram_feed` resolver filters those
-  nulls; all-imageless / empty feeds resolve to `_feedMeta.status = "empty"`, reason
-  `no_instagram_posts`. Engagement counts are omitted when the wire value is `null` (never
-  fabricated as `0`). `videoUrl` is set only when `post_type === "video"`.
-- **Media-URL rule (load-bearing, §3.7):** the data layer only ever consumes the re-hosted
-  MediaRecord CDN URLs the server ships in `files[]`. The expiring
-  `instagram_post_files.img_url`/`video_url` columns are never on the wire — do not add any code
-  path that would surface them.
-- `DEFAULT_BIND_TARGETS['instagram-post-grid'] = 'items'` — keep in lockstep with dashtrack-ai
-  and `@opensite/ui`. No `@opensite/ui` dep bump: `InstagramPostItem` is a local string-typed
-  wire/prop shape, assignable to the block's `React.ReactNode` props.
+`DataSource["type"]` union:
+
+- `blog_feed` — blog list (Phase 1)
+- `blog_post` — blog detail (Phase 1)
+- `testimonials_feed` — reviews (Phase 2)
+- `instagram_feed` — Instagram gallery (Phase 3)
+- `events_feed` — the first **EXPANDING** source (`expands: true`, D6, Phase 4)
+
+### `resolveBlocks`
+
+```typescript
+resolveBlocks(blocks, {
+  baseUrl,      // feeds API origin — never hardcoded
+  websiteToken, // websites.token — the single scoping identifier
+  path?,        // resolves blog_post { current: true } slugs from the last segment
+  sources?,     // override/add source resolvers (merged over BUILT_IN_SOURCES)
+  fetcher?,     // injectable fetch
+}): Promise<Block[]>
+```
+
+- **Pure** — no registry access, no mutation of input blocks. Maps each block to zero-or-more
+  output blocks (one-to-many expansion, contract D6) and `.flat()`s the result.
+- Bind target resolution: `dataSource.bindTo` → `SINGLE_BIND_TARGETS[type]` →
+  `DEFAULT_BIND_TARGETS[type]` → `"posts"` (`DEFAULT_BIND_TARGET`).
+- Only the bind target(s) are written; every other authored prop is untouched (§2.3 rule 2).
+  `dataSource` is retained on the output block (except on expanded events heroes, where it is
+  dropped so re-resolves never re-expand).
+- Unknown `dataSource.type` → block untouched + `_feedMeta.reason = "unknown_source:<type>"`.
+- A resolver that throws/rejects degrades only its own block (`reason: "resolver_threw"`), never
+  the whole `Promise.all`.
+
+### Bind-target maps (exported from `./data`)
+
+| Map | Key examples | Target |
+|---|---|---|
+| `DEFAULT_BIND_TARGETS` | `blog-related-articles` → `articles`; `blog-tech-insights` → `secondaryPosts`; `instagram-post-grid` → `items`; 17 array testimonials blocks → `testimonials`; `testimonials-list-verified` / `-images-helpful` / `-grid-add-review` → `reviews`; carousel `carousel-*` → `items` | array prop |
+| `SINGLE_BIND_TARGETS` | `testimonials-company-logo` / `-large-quote` / `-split-image` → `testimonial` | single object (`items[0]`) |
+| `BLOG_CATEGORY_BIND_TARGETS` | `blog-filtered-results` → `categories` | second bind: category chips |
+| `BLOG_PRIMARY_POST_BIND_TARGETS` | `blog-filtered-results` → `primaryPost` | third bind: featured hero slot |
+| `DEFAULT_BIND_TARGET` | — | `"posts"` (final fallback) |
+
+`ALL_CATEGORY_CHIP` (`{ label: "All", value: "all" }`) is prepended to every non-empty hydrated
+chip list; `blogCategoryChips()` trims with `rubyPosixTrim` (Ruby `[[:space:]]`), de-duplicates
+case-insensitively, and never fabricates a chip on an empty taxonomy.
+
+### `blockType` / block-shape handling
+
+Two block shapes coexist and are never normalized before `resolveBlocks` (the host normalizes
+after). `resolve-blocks.ts` exports:
+
+- `blockType(block)` — `_type` when present, else the last `/` segment of `block_ref`/`block_name`.
+- `writeContainer` / `withContainer` (internal) — write hydrated props into `data` for wire-shaped
+  blocks, `blockProps` for chai-shaped blocks.
+
+### Empty vs error
+
+`_feedMeta.status` is `ok | empty | error` with a machine-readable `reason`. `renderBlock` routes
+`error`-state blocks to `__feed_error__` only when registered; otherwise the block renders its
+empty state. `empty` outcomes clear only targets the block already authored (`clearEmptyBindTarget`;
+single-bind targets are deleted, array targets set to `[]`). Never fabricate items or placeholder
+content.
+
+### `FeedClient`
+
+`createFeedClient({ baseUrl, websiteToken, fetcher? })` builds URLs under
+`/public_services/websites/{token}/feeds/...`:
+
+- `listBlogs(params)` → `/blogs`
+- `getBlog(slug)` → `/blogs/{slug}`
+- `listBlogCategories()` / `listBlogTags()` → `/blog_categories` / `/blog_tags` (`per_page=50`)
+- `listInstagram(params)` → `/instagram`
+- `listReviews(params)` → `/reviews`
+- `listEvents(params)` → `/events`
+
+Rules (do not regress):
+
+- `per_page` is clamped ≤ `MAX_PER_PAGE` (50). `TAXONOMY_PER_PAGE = MAX_PER_PAGE`.
+- Every provided filter is serialized on **every** call (filters never drop across pages — legacy
+  bug #1). Scalar `category`/`tag` use `category_slug`/`tag_slug`; arrays use repeated
+  `category_slug[]`/`tag_slug[]`. Reviews `platforms[]`, events `location_ids[]` are repeated Rack
+  keys.
+- Errors are **returned** as `{ data, meta, error }` — never thrown, never logged (legacy bugs
+  #4/#5/#6). `error.status` is the HTTP status (or `0` for network failures).
+- `baseUrl` / `websiteToken` / `fetcher` are injected, never hardcoded.
+
+### Wire→prop mappers (`mappers.ts`)
+
+- `mapBlogFeedItem` / `mapBlogFeedDetail` (blog list/detail)
+- `mapInstagramFeedItem` — returns `null` to skip imageless posts (`files[0].image_url` absent)
+- `mapTestimonialItem` (base) / `mapReviewItem` (returns `null` without a numeric rating; `rating`
+  is REQUIRED, never fabricated) / `mapSocialTestimonialItem` (twitter-cards)
+- `mapEventFeedItem` — one occurrence → `hero-event-registration` blockProps (`EventHeroProps`)
+- `formatFeedDate` (`"%b %-d, %Y"`, UTC-pinned), `truncateAtWordBoundary`, `platformLabel`
+  (18 `review_type` keys, `tripadvisor` → `"TripAdvisor"` — capital A, lockstep)
+
+### Events feed (Phase 4, expanding source)
+
+One symbolic block hydrates into **N** `hero-event-registration` instances:
+
+- `eventLimit(source)` = `limit` default **6**, hard cap **12**; also used as `per_page`.
+- Each minted block gets a deterministic `_id`
+  (`"<symbolic_id>__ev_<event_id>_<occurrence_index>"`), inherits the symbolic `_parent`, and
+  carries `_feedMeta { status: "ok", source: "events_feed", expandedFrom: <symbolic_id> }`.
+- Minted blocks are minimal (`{ _id, _type, _parent, blockProps, _feedMeta }`) — authored
+  presentation on the symbolic source is dropped; `dataSource` is dropped; `blockProps` are fresh
+  mapped occurrence props (no merge).
+- On empty (`no_upcoming_events`) or error (`upstream_error`) the original symbolic block stays in
+  place unexpanded. Empty events do **not** run `clearEmptyBindTarget` (no bind target exists).
+
+### Blog detail → article layouts (`article-props.ts`)
+
+`mapBlogDetailToArticleProps` mirrors customer-sites `BlogDetailEntry#blog_to_article_props` — the
+FAT union superset all six longform layouts render from. `resolveBlogPost` merges it over the
+template's authored props, then applies a per-post `article_layout` override only when it is
+allow-listed (`ARTICLE_LAYOUT_COMPONENT_IDS`, six ids) and only on the primary article block (no
+`bindTo`). A 404 → `post_not_found` empty (never `upstream_error`).
+
+`article-props.ts` ports several Ruby string primitives byte-for-byte (a recurring platform
+lockstep trap): `rubyStrip` (ASCII `String#strip`, not JS `trim()`), `ASCII_WHITESPACE_SPLIT`,
+`RUBY_POSIX_SPACE` (Unicode `[[:space:]]`, NOT JS `/\s/u`), `rubyPosixTrim`, `normalizedText`,
+`cgiEscape` (Ruby `CGI.escape`), and `slugify` (mirror of `@page-speed/markdown-to-jsx` +
+`BlogDetailEntry#slugify`). `HEADING_LINE` uses `[^\n]` (not `.`) so U+2028/U+2029 headings match
+Ruby. `post.pubDate` is a Unix-ms integer (date-fns throws on strings).
 
 ### Key rules (do not regress)
 
 - **Types stay in `src/types/index.ts`.** All feed interfaces (`DataSource`, `FeedMeta`,
-  `FeedError`, `FeedListResponse`, `BlogFeedItem`, `BlogPostItem`, `FeedClient`, …) live there and
-  are re-exported from `src/data`. `Block` gained `dataSource?` and `_feedMeta?`;
-  `BlockRenderContext` gained `data?`.
-- **`FeedClient` owns URL building.** Every provided filter is serialized on every call
-  (filters never drop across pages — legacy bug #1). `per_page` is clamped ≤ 50. Values are
-  URL-encoded. Errors are **returned** as `{ data, meta, error }`, never thrown, never logged
-  (legacy bugs #4/#5/#6). `baseUrl` and `per_page` are injected, never hardcoded.
-- Blog `category` / `tag` data-source filters and `categorySlug` / `tagSlug` client params accept
-  `string | string[]`. Scalars retain `category_slug` / `tag_slug`; arrays use repeated Rack keys
-  `category_slug[]` / `tag_slug[]`. Both shapes must persist unchanged across pagination calls.
-- If any named value cannot be resolved by the trusted server, preserve the error/empty outcome;
-  never retry without the filter or degrade an array to its resolvable subset.
-- **`resolveBlocks` is pure.** No registry access, no mutation of the input blocks. It maps each
-  block to zero-or-more output blocks (one-to-many expansion, contract D6) and `.flat()`s the
-  result. Bind target = `dataSource.bindTo` → `DEFAULT_BIND_TARGETS[block._type]` → `"posts"`.
-  Only the bind target (and, for `blog-tech-insights`, an unset `featuredPost`) is written —
-  every other authored prop is untouched (contract §2.3 rule 2). `dataSource` is retained on the
-  output block. Unknown `dataSource.type` → block untouched + `_feedMeta.reason` =
-  `unknown_source:<type>`.
-- **Empty ≠ error.** `_feedMeta.status` is `ok | empty | error`. The `renderBlock` pipeline
-  routes `error`-state blocks to the `__feed_error__` renderer **only when it is registered**;
-  otherwise the block renders normally (its empty state). Never fabricate items or placeholder
-  content.
-- **Renderer-key constants** live in `src/registry/index.ts`: `FALLBACK_RENDERER_KEY`
-  (`"__fallback__"`) and `FEED_ERROR_RENDERER_KEY` (`"__feed_error__"`). Re-exported from the
-  barrel and `./data`.
-- **`blockProps` is canonical.** The three built-in renderers now read `block.blockProps ??
-  block.props` (legacy `props` is a fallback shim only).
+  `FeedError`, `FeedListResponse`, `BlogFeedItem`, `InstagramFeedItem`, `ReviewFeedItem`,
+  `EventFeedItem`, `ArticleDetailProps`, …) live there and are re-exported from `src/data`.
+- **`FeedClient` owns URL building.** Every provided filter is serialized on every call. `per_page`
+  is clamped ≤ 50. Errors are returned, never thrown/logged.
+- **`resolveBlocks` is pure** and one-to-many expansion uses `.flat()`.
+- **`blockProps` is canonical.** The three built-in renderers read `block.blockProps ?? block.props`
+  (legacy `props` is a fallback shim only).
+- **Media-URL rule (load-bearing, §3.7):** the data layer only ever consumes re-hosted MediaRecord
+  CDN URLs the server ships in `files[]` / `image_url`. Never add a code path that surfaces the
+  expiring `instagram_post_files.img_url`/`video_url` columns.
+- **Never fabricate.** Omit absent fields/regions; engagement counts are omitted when the wire
+  value is `null`; reviews with no numeric `rating` drop; events stats/actions are real-only and
+  capped (`actions ≤ 2`, `stats ≤ 4`).
+- **Lockstep parity.** The client (TS) and build-time (dashtrack-ai `Feeds::Hydrator`) must derive
+  block type ids, choose the write container (`data` vs `blockProps`), map props, and handle
+  empty/error identically. The `blog-detail-parity.json` fixture is shared with customer-sites —
+  changing one side turns the other's suite red.
 - **SSR:** `resolveBlocks` uses plain `fetch`; inject a `fetcher` for Node < 18 / tests.
-  `initializeDefaultRenderers()` must still be called manually server-side (browser-only
-  auto-init — see §6), including any custom / `__feed_error__` renderers.
+  `initializeDefaultRenderers()` must still be called manually server-side (browser-only auto-init
+  — see §6), including any custom / `__feed_error__` renderers.
 - Adding the `./data` subpath required updating **both** `tsup.config.ts` (`"data/index"`) and
-  `package.json` `exports` (`./data`).
+  `package.json` `exports` (`./data`). Keep those in sync for any future sub-path.
