@@ -35,7 +35,7 @@
 | Field | Value |
 |---|---|
 | NPM name | `@page-speed/blocks` |
-| Version | `0.6.13` |
+| Version | `0.6.14` |
 | License | BSD-3-Clause |
 | Package manager | **pnpm** (`packageManager: "pnpm@11.20.0"`; `engines.pnpm: ">=9.0.0"`) |
 | Node requirement | `>=18.0.0` |
@@ -813,7 +813,7 @@ from sub-paths (e.g., `@page-speed/blocks/registry`), the auto-init never runs.
 
 | Package | Range (package.json) | Actually imported by `src/`? |
 |---|---|---|
-| `@opensite/ui` | `3.17.3` (exact) | ❌ externalized, not imported at runtime |
+| `@opensite/ui` | `4.0.0` (exact) | ❌ externalized, not imported at runtime |
 | `@page-speed/img` | `0.4.10` (exact) | ❌ externalized, not imported at runtime |
 | `@page-speed/pressable` | `^0.1.1` | ✅ `Pressable` (all three built-in renderers) |
 | `@page-speed/router` | `^1.2.1` | ✅ `RouterProvider` (`BlocksProvider`) |
